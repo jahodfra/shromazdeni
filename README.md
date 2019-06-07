@@ -1,5 +1,7 @@
 # Aplikace pro hlasování v SVJ.
 
+Tato aplikace není hotová. Aktuálně nescháním pomoc.
+
 ## Instalace
 ```bash
 python3 -m venv env
