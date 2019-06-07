@@ -60,7 +60,7 @@ class KatastrSpider(scrapy.Spider):
             self,
             region='Praha (okres Hlavní město Praha);554782',
             town_part='400807',
-            building_no='365'):
+            building='365'):
         self.region = region
         self.town_part = town_part
         self.building = building
