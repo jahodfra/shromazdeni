@@ -7,17 +7,6 @@ import urllib
 import scrapy
 
 
-def format_persons(name):
-    if name.startswith('SJM'):
-        name = name[3:].strip()
-        names, address = name.split(',', 1)
-        address = address.strip()
-        name1, name2 = names.split(' a ')
-        return ', '.join((name1, address)), ', '.join((name2, address))
-    else:
-        return name, ''
-
-
 def parse_owners(response):
     rows = response.css('table.vlastnici tr')
     owners = []
@@ -38,12 +27,9 @@ def parse_owners(response):
                 # we are reading another header - different part of the table
                 break
             fraction_el = row.css('.right').xpath('text()').get()
-            person1, person2 = format_persons(name)
             owners.append({
                 'name': name,
                 'fraction': fraction_el or '1',
-                'person1': person1,
-                'person2': person2,
             })
     return owners
 
