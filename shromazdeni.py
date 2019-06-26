@@ -236,8 +236,7 @@ class AppCmd(cmd.Cmd):
             except KeyError:
                 print(f'Unit "{args}" not found.')
                 return
-            
-          
+
         # Without parameter, writes who is present
         # With the name it writes the flats
         # TODO: finish
