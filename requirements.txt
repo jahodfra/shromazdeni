@@ -1,3 +1,5 @@
 scrapy
 readline
 pytest
+flake8
+black
