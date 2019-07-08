@@ -3,7 +3,6 @@
 Output is onwers of the units in the building.
 """
 
-import urllib
 import scrapy
 
 
