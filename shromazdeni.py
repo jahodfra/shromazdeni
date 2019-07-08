@@ -22,7 +22,6 @@ class Flat:
     name: str
     fraction: fractions.Fraction
     owners: List[str]  # Owner can be SJM
-    persons: Set[str]
     represented: Optional[Person] = None
 
     @property
@@ -32,6 +31,10 @@ class Flat:
     @property
     def nice_name(self):
         return ("*" if self.represented else " ") + self.name
+
+    @property
+    def persons(self) -> Set[str]:
+        return set(person for owner in self.owners for person in format_persons(owner))
 
 
 # TODO: preserve presence when the program crashes
@@ -61,11 +64,11 @@ def format_persons(name):
         return [name]
 
 
-def choice_from(title, choices):
+def choice_from(title, choices, stdout):
     while True:
-        print(title)
+        stdout.write(title + "\n")
         for i, choice in enumerate(choices):
-            print(f"{i:2d}) {choice}")
+            stdout.write(f"{i:2d}) {choice}\n")
         line = input("Choice [empty to cancel]> ")
 
         if not line or line.isspace():
@@ -76,23 +79,18 @@ def choice_from(title, choices):
                 return index
         except ValueError:
             pass
-        print("invalid choice")
+        stdout.write("invalid choice\n")
 
 
-def prompt(question):
+def confirm(question):
     return input(f"\n{question} [yN]> ").lower() == "y"
 
 
 class Building:
     """Abstraction layer above json file from the parser."""
 
-    def __init__(self, flats):
-        prefixes = set(flat["name"].split("/")[0] for flat in flats)
-        shorten_name = len(prefixes) > 1
-        self._flats = collections.OrderedDict()
-        converted = [self._convert_flat(flat, shorten_name) for flat in flats]
-        converted.sort(key=lambda flat: flat.sort_key)
-        self._flats = collections.OrderedDict((flat.name, flat) for flat in converted)
+    def __init__(self, flats: List[Flat]):
+        self._flats = collections.OrderedDict((flat.name, flat) for flat in flats)
 
     @staticmethod
     def _convert_flat(flat, shorten_name):
@@ -101,48 +99,41 @@ class Building:
         else:
             shortname = flat["name"].split("/", 1)[1]
 
-        persons = set(
-            person
-            for owner in flat["owners"]
-            for person in format_persons(owner["name"])
-        )
         return Flat(
             name=shortname,
             owners=[owner["name"] for owner in flat["owners"]],
-            persons=persons,
             fraction=fractions.Fraction(flat["fraction"]),
         )
 
     @classmethod
-    def load(cls, filepath):
-        with open(filepath, "r") as fin:
-            flats = json.load(fin)
+    def load(cls, json_flats):
+        prefixes = set(flat["name"].split("/")[0] for flat in json_flats)
+        shorten_name = len(prefixes) > 1
+        flats = [cls._convert_flat(flat, shorten_name) for flat in json_flats]
+        flats.sort(key=lambda flat: flat.sort_key)
         return cls(flats)
 
     @property
-    def flat_names(self):
-        return [flat.nice_name for flat in self._flats.values()]
+    def flats(self):
+        return list(self._flats.values())
 
     def get_flat(self, shortname):
         return self._flats[shortname]
 
     @property
     def percent_represented(self):
-        return (
-            sum(flat.fraction for flat in self._flats.values() if flat.represented)
-            * 100
-        )
+        return sum(flat.fraction for flat in self.flats if flat.represented) * 100
 
     def represent_flat(self, shortname, person: Person):
         self._flats[shortname].represented = person
 
 
 class AppCmd(cmd.Cmd):
-    def __init__(self, building):
+    def __init__(self, building, completekey="tab", stdin=None, stdout=None):
         self.building = building
         self.present_persons = {}
         self.set_prompt()
-        super().__init__()
+        super().__init__(completekey=completekey, stdin=stdin, stdout=stdout)
 
     def set_prompt(self):
         percent = self.building.percent_represented
@@ -151,48 +142,56 @@ class AppCmd(cmd.Cmd):
 
     def do_flat(self, args):
         """List all flats in the building."""
-        # TODO: add notification which flats are represented
         if args and not args.isspace():
             try:
                 flat = self.building.get_flat(args)
             except KeyError:
-                print(f'Unit "{args}" not found.')
+                self.stdout.write(f'Unit "{args}" not found.\n')
                 return
-            print("Owners:")
+            self.stdout.write("Owners:\n")
             for i, owner in enumerate(flat.owners, start=1):
-                print(f"{i:2d}. {owner}")
+                self.stdout.write(f"{i:2d}. {owner}\n")
             if flat.represented:
-                print(f"Represented by {flat.represented.name}")
+                self.stdout.write(f"Represented by {flat.represented.name}\n")
         else:
-            self.columnize(self.building.flat_names)
+            self.columnize([flat.nice_name for flat in self.building.flats])
 
     def complete_flat(self, text, line, beginx, endx):
-        return [n for n in self.building.flat_names if n.startswith(text)]
+        names = [flat.name for flat in self.building.flats]
+        return [n for n in names if n.startswith(text)]
 
     def do_add(self, args):
         """Adds the representation for flats."""
-        # The command seems bit non intuitive.
+        # The command seems bit nonintuitive.
         # We first enter name of flat so we don't have to
         # enter the name of owner in the most common case.
         if not args or args.isspace():
-            print("No flats passed.")
-            print('use "add [flat1] [flat2]"')
+            self.stdout.write('No flats passed.\nuse "add [flat1] [flat2]"\n')
             return
 
         persons = set()
         flats = [arg.strip() for arg in args.split(" ")]
+        new_flats = []
         try:
             for fname in flats:
                 flat = self.building.get_flat(fname)
                 persons.update(flat.persons)
-                print(f"{fname} owners:")
-                for i, owner in enumerate(flat.owners, start=1):
-                    print(f"{i:2d}. {owner}")
+                if flat.represented:
+                    self.stdout.write(
+                        f"Ignoring {fname}. It is already "
+                        f"represented by {flat.represented.name}.\n"
+                    )
+                else:
+                    new_flats.append(fname)
+                    self.stdout.write(f"{fname} owners:\n")
+                    for i, owner in enumerate(flat.owners, start=1):
+                        self.stdout.write(f"{i:2d}. {owner}\n")
         except KeyError:
-            print(f'Unit "{flat}" not found.')
+            self.stdout.write(f'Unit "{fname}" not found.\n')
             return
-        persons = ["Somebody else"] + sorted(persons)
-        owner_index = choice_from("Select owner", persons)
+        flats = new_flats
+        persons = ["New Person"] + sorted(persons)
+        owner_index = choice_from("Select representation", persons, self.stdout)
         if owner_index == -1:
             return
         if owner_index == 0:
@@ -201,20 +200,14 @@ class AppCmd(cmd.Cmd):
             # during the meeting.
             # Can be solved by specifying extra persons as options.
             name = input("Name: ")
-            if not prompt("Create new person?"):
+            if not confirm("Create new person?"):
                 return
         else:
             name = persons[owner_index]
         if name not in self.present_persons:
             self.present_persons[name] = Person(name)
         for fname in flats:
-            represented = self.building.get_flat(fname).represented
-            if represented:
-                print(
-                    f"Ignoring {fname}. It is already represented by {represented.name}."
-                )
-            else:
-                self.building.represent_flat(fname, self.present_persons[name])
+            self.building.represent_flat(fname, self.present_persons[name])
         self.set_prompt()
 
     complete_add = complete_flat
@@ -226,25 +219,23 @@ class AppCmd(cmd.Cmd):
     > remove 218
     Novák Petr, Příčná ulice 34, Praha no longer represents 218.
     """
+        # TODO: remove person from the gathering
+        # TODO: remove person representing the flat from the gathering
         pass
 
     def do_presence(self, args):
         """Print presence."""
         if args and not args.isspace():
-            try:
-                flat = self.building.get_flat(args)
-            except KeyError:
-                print(f'Unit "{args}" not found.')
-                return
+            pass
 
         # Without parameter, writes who is present
-        # With the name it writes the flats
+        # With the name it writes the flats the person represents
         # TODO: finish
         pass
 
     def do_quit(self, args):
         """Quit the app."""
-        return prompt("Really quit?")
+        return confirm("Really quit?")
 
     # Shortcuts
     do_q = do_quit
@@ -260,7 +251,9 @@ def main():
         sys.exit(1)
 
     setup_readline_if_available()
-    building = Building.load(sys.argv[1])
+    with open(sys.argv[1], "r") as fin:
+        json_flats = json.load(fin)
+    building = Building.load(json_flats)
     AppCmd(building).cmdloop()
 
 
