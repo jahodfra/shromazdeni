@@ -31,11 +31,10 @@ def parse_owners(response):
 
 
 class KatastrSpider(scrapy.Spider):
-    name = "katastr"
+    name: str = "katastr"  # type: ignore
     start_urls = ["https://nahlizenidokn.cuzk.cz/VyberBudovu.aspx?typ=Stavba"]
     download_delay = 1.0
     allowed_domains = ["nahlizenidokn.cuzk.cz"]
-    custom_settings = {}
 
     def __init__(
         self,

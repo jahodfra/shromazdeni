@@ -3,8 +3,16 @@ dist: xenial
 python:
   3.7
 install:
-  pip install -r requirements.txt
+  - pip install -r requirements.txt
+before_script:
+  - pip install -r test_requirements.txt
 script:
-  - pytest .
+  - export MYPYPATH=$VIRTUAL_ENV/lib/python3.7/site-packages/
+  - export PYTHONPATH=$PYTHONPATH:$(pwd)
+  - py.test . --cov=. --cov-report=term-missing
   - flake8
   - black --check .
+  - mypy .
+after_success:
+  - coveralls
+
