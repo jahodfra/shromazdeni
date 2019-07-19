@@ -1,12 +1,13 @@
-#!env/bin/python
-
+import argparse
 import cmd
 import collections
+import csv
+import datetime
 import fractions
 import json
-import sys
+import os
 from dataclasses import dataclass
-from typing import List, Optional, Set
+from typing import Dict, List, Optional, Set, TextIO
 
 
 @dataclass
@@ -35,10 +36,6 @@ class Flat:
     @property
     def persons(self) -> Set[str]:
         return set(person for owner in self.owners for person in format_persons(owner))
-
-
-# TODO: preserve presence when the program crashes
-# TODO: log the program output to an extra file
 
 
 def setup_readline_if_available():
@@ -86,11 +83,63 @@ def confirm(question):
     return input(f"\n{question} [yN]> ").lower() == "y"
 
 
-class Building:
+def log_command(func):
+    def wrapper(self, *args):
+        result = func(self, *args)
+        # On success
+        if self._logger:
+            self._logger.log(func.__name__, args)
+        return result
+
+    return wrapper
+
+
+class CommandLogger:
+    def __init__(self, logfile):
+        self._logfile = logfile
+        self._writer = csv.writer(logfile)
+
+    @staticmethod
+    def default_logname(flats_filename: str) -> str:
+        now = datetime.datetime.now().strftime("%Y%m%d")
+        filename, _ext = os.path.splitext(flats_filename)
+        filename += f".{now}.log"
+        return filename
+
+    @staticmethod
+    def parse_logfile(logfile, model):
+        reader = csv.reader(logfile)
+        next(reader)
+        for row in reader:
+            func = row[1]
+            getattr(model, func)(*row[2:])
+
+    @staticmethod
+    def create_logfile(filename: str):
+        fout = open(filename, "w")
+        writer = csv.writer(fout)
+        writer.writerow(["date", "operation", "*args"])
+        return fout
+
+    def log(self, func_name, args):
+        assert all(isinstance(arg, str) for arg in args)
+        now = datetime.datetime.now().strftime("%H:%M")
+        row = [now, func_name]
+        row += args
+        self._writer.writerow(row)
+        self._logfile.flush()
+
+
+class Model:
     """Abstraction layer above json file from the parser."""
 
     def __init__(self, flats: List[Flat]):
         self._flats = collections.OrderedDict((flat.name, flat) for flat in flats)
+        self._present_persons: Dict[str, Person] = {}
+        self._logger = None
+
+    def register_logger(self, logger):
+        self._logger = logger
 
     @staticmethod
     def _convert_flat(flat, shorten_name):
@@ -124,27 +173,65 @@ class Building:
     def percent_represented(self):
         return sum(flat.fraction for flat in self.flats if flat.represented) * 100
 
-    def represent_flat(self, shortname, person: Person):
-        self._flats[shortname].represented = person
+    @log_command
+    def represent_flat(self, flat_name, person_name):
+        person = self._present_persons[person_name]
+        self._flats[flat_name].represented = person
+
+    def person_exists(self, name):
+        return name in self._present_persons
+
+    @log_command
+    def add_person(self, name):
+        assert not self.person_exists(name)
+        self._present_persons[name] = Person(name)
+
+    @log_command
+    def remove_flat_representative(self, flat_name):
+        flat = self._flats[flat_name]
+        person = flat.represented
+        if person:
+            self._remove_flat_representative(flat_name)
+
+    def _remove_flat_representative(self, flat_name):
+        self._flats[flat_name].represented = None
+
+    @log_command
+    def remove_person(self, name):
+        person_flats = self.get_representative_flats(name)
+        for flat_name in person_flats:
+            self._remove_flat_representative(flat_name)
+        del self._present_persons[name]
+        return person_flats
+
+    def get_representative_flats(self, person_name):
+        return [
+            flat.name
+            for flat in self.flats
+            if flat.represented and flat.represented.name == person_name
+        ]
+
+    def get_person_names(self, prefix):
+        return [n for n in self._present_persons if n.startswith(prefix)]
 
 
 class AppCmd(cmd.Cmd):
-    def __init__(self, building, completekey="tab", stdin=None, stdout=None):
-        self.building = building
-        self.present_persons = {}
+    def __init__(self, model, completekey="tab", stdin=None, stdout=None):
+        self.model = model
         self.set_prompt()
         super().__init__(completekey=completekey, stdin=stdin, stdout=stdout)
 
     def set_prompt(self):
-        percent = self.building.percent_represented
+        percent = self.model.percent_represented
         can_start = "Y" if percent > 50 else "N"
         self.prompt = f"{can_start}{float(percent):.1f}> "
 
     def do_flat(self, args):
-        """List all flats in the building."""
-        if args and not args.isspace():
+        """List all flats in the building or prints flat details."""
+        args = args.strip()
+        if args:
             try:
-                flat = self.building.get_flat(args)
+                flat = self.model.get_flat(args)
             except KeyError:
                 self.stdout.write(f'Unit "{args}" not found.\n')
                 return
@@ -154,18 +241,18 @@ class AppCmd(cmd.Cmd):
             if flat.represented:
                 self.stdout.write(f"Represented by {flat.represented.name}\n")
         else:
-            self.columnize([flat.nice_name for flat in self.building.flats])
+            self.columnize([flat.nice_name for flat in self.model.flats])
 
     def complete_flat(self, text, line, beginx, endx):
-        names = [flat.name for flat in self.building.flats]
-        return [n for n in names if n.startswith(text)]
+        return [flat.name for flat in self.model.flats if flat.name.startswith(text)]
 
     def do_add(self, args):
         """Adds the representation for flats."""
         # The command seems bit nonintuitive.
         # We first enter name of flat so we don't have to
         # enter the name of owner in the most common case.
-        if not args or args.isspace():
+        args = args.strip()
+        if not args:
             self.stdout.write('No flats passed.\nuse "add [flat1] [flat2]"\n')
             return
 
@@ -174,14 +261,15 @@ class AppCmd(cmd.Cmd):
         new_flats = []
         try:
             for fname in flats:
-                flat = self.building.get_flat(fname)
-                persons.update(flat.persons)
+                flat = self.model.get_flat(fname)
                 if flat.represented:
+                    persons.add(flat.represented.name)
                     self.stdout.write(
                         f"Ignoring {fname}. It is already "
                         f"represented by {flat.represented.name}.\n"
                     )
                 else:
+                    persons.update(flat.persons)
                     new_flats.append(fname)
                     self.stdout.write(f"{fname} owners:\n")
                     for i, owner in enumerate(flat.owners, start=1):
@@ -190,38 +278,70 @@ class AppCmd(cmd.Cmd):
             self.stdout.write(f'Unit "{fname}" not found.\n')
             return
         flats = new_flats
+        if not flats:
+            return
         persons = ["New Person"] + sorted(persons)
         owner_index = choice_from("Select representation", persons, self.stdout)
         if owner_index == -1:
             return
         if owner_index == 0:
-            # TODO: autocomplete on name
-            # this is needed only when somebody gives a will to foreign person
-            # during the meeting.
-            # Can be solved by specifying extra persons as options.
             name = input("Name: ")
             if not confirm("Create new person?"):
                 return
         else:
             name = persons[owner_index]
-        if name not in self.present_persons:
-            self.present_persons[name] = Person(name)
+        if not self.model.person_exists(name):
+            # Prevent creating already existing person.
+            self.model.add_person(name)
         for fname in flats:
-            self.building.represent_flat(fname, self.present_persons[name])
+            self.model.represent_flat(fname, name)
         self.set_prompt()
 
     complete_add = complete_flat
 
+    def _remove_person(self, person_name):
+        for flat in self.model.remove_person(person_name):
+            self.stdout.write(f"{person_name} no longer represents {flat}.\n")
+        self.stdout.write(f"{person_name} left.\n")
+
     def do_remove(self, args):
-        """
-    > remove
-    Novák Jan, Příčná ulice 34, Praha left the gathering.
-    > remove 218
-    Novák Petr, Příčná ulice 34, Praha no longer represents 218.
-    """
-        # TODO: remove person from the gathering
-        # TODO: remove person representing the flat from the gathering
-        pass
+        """Removes person or flat representative."""
+        args = args.strip()
+        if not args:
+            self.stdout.write('No argument. Use "remove [flat or person]"\n')
+            return
+        try:
+            flat = self.model.get_flat(args)
+        except KeyError:
+            pass
+        else:
+            person = flat.represented
+            if not person:
+                self.stdout.write(f'"{args}" is not represented.\n')
+                return
+            flats = self.model.get_representative_flats(person.name)
+            if len(flats) <= 1:
+                self._remove_person(person.name)
+            else:
+                self.stdout.write(
+                    f"{flat.represented.name} no longer represents {flat.name}.\n"
+                )
+                self.model.remove_flat_representative(flat.name)
+            self.set_prompt()
+            return
+        try:
+            self._remove_person(args)
+            self.set_prompt()
+        except KeyError:
+            self.stdout.write(f'"{args}" is neither flat or person.\n')
+
+    def complete_remove(self, text, line, beginx, endx):
+        flats = [
+            flat.name
+            for flat in self.model.flats
+            if flat.represented and flat.name.startswith(text)
+        ]
+        return flats + self.model.get_person_names(text)
 
     def do_presence(self, args):
         """Print presence."""
@@ -244,17 +364,42 @@ class AppCmd(cmd.Cmd):
     do_EOF = do_quit
 
 
-def main():
-    if len(sys.argv) != 2:
-        print("Error: Missing mandatory argument.")
-        print("Usage: shromazdeni.py <flats.json>")
-        sys.exit(1)
+def open_or_create_logfile(logfile: TextIO, model: Model, default_filename: str):
+    if not logfile:
+        try:
+            logfile = open(default_filename, "r+")
+        except IOError:
+            logfile = CommandLogger.create_logfile(default_filename)
+        else:
+            CommandLogger.parse_logfile(logfile, model)
+    else:
+        CommandLogger.parse_logfile(logfile, model)
+    return logfile
 
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Records presence and votes on a gathering."
+    )
+    parser.add_argument(
+        "flats",
+        type=argparse.FileType("rb"),
+        help="the json file with flats definition",
+    )
+    parser.add_argument(
+        "--log",
+        metavar="logfile",
+        type=argparse.FileType("r+"),
+        help="the csv file with actions definition",
+    )
+    args = parser.parse_args()
     setup_readline_if_available()
-    with open(sys.argv[1], "r") as fin:
-        json_flats = json.load(fin)
-    building = Building.load(json_flats)
-    AppCmd(building).cmdloop()
+    json_flats = json.load(args.flats)
+    model = Model.load(json_flats)
+    default_filename = CommandLogger.default_logname(args.flats.name)
+    logfile = open_or_create_logfile(args.log, model, default_filename)
+    model.register_logger(CommandLogger(logfile))
+    AppCmd(model).cmdloop()
 
 
 if __name__ == "__main__":

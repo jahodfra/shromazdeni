@@ -2,6 +2,7 @@ import fractions
 import io
 from unittest import mock
 
+import freezegun
 import pytest
 
 import shromazdeni
@@ -23,18 +24,16 @@ def test_format_persons_sjm():
 @pytest.fixture
 def simple_building():
     third = fractions.Fraction(1) / 3
-    return shromazdeni.Building(
+    model = shromazdeni.Model(
         [
             shromazdeni.Flat("1", third, ["Petr Novák"]),
             shromazdeni.Flat("2", third, ["Jana Nová"]),
-            shromazdeni.Flat(
-                "3",
-                third,
-                ["Oldřich Starý"],
-                represented=shromazdeni.Person("Jana Nová"),
-            ),
+            shromazdeni.Flat("3", third, ["Oldřich Starý"]),
         ]
     )
+    model.add_person("Radoslava Květná")
+    model.represent_flat("3", "Radoslava Květná")
+    return model
 
 
 def test_flat_with_param(simple_building):
@@ -53,7 +52,7 @@ def test_flat_with_representation(simple_building):
     cmd.do_flat("3")
 
     assert out.getvalue() == (
-        "Owners:\n 1. Oldřich Starý\n" "Represented by Jana Nová\n"
+        "Owners:\n 1. Oldřich Starý\n" "Represented by Radoslava Květná\n"
     )
 
 
@@ -77,14 +76,14 @@ def test_flat_without_params(simple_building):
 
 def test_complete_flat():
     third = fractions.Fraction(1) / 3
-    building = shromazdeni.Building(
+    model = shromazdeni.Model(
         [
             shromazdeni.Flat("777/1", third, []),
             shromazdeni.Flat("777/2", third, []),
             shromazdeni.Flat("778/3", third, []),
         ]
     )
-    cmd = shromazdeni.AppCmd(building)
+    cmd = shromazdeni.AppCmd(model)
 
     possibilities = cmd.complete_flat("777", "flat 777/", 9, 9)
 
@@ -97,10 +96,10 @@ def test_load_json():
         {"name": "2", "fraction": "2/3", "owners": [{"name": "P2", "fraction": "1"}]},
     ]
 
-    building = shromazdeni.Building.load(json_flats)
+    model = shromazdeni.Model.load(json_flats)
 
     unit = fractions.Fraction(1)
-    assert building.flats == [
+    assert model.flats == [
         shromazdeni.Flat("1", unit / 3, ["P1"]),
         shromazdeni.Flat("2", unit * 2 / 3, ["P2"]),
     ]
@@ -112,10 +111,10 @@ def test_load_json_shorten_names():
         {"name": "100/2", "fraction": "2/3", "owners": []},
     ]
 
-    building = shromazdeni.Building.load(json_flats)
+    model = shromazdeni.Model.load(json_flats)
 
     unit = fractions.Fraction(1)
-    assert building.flats == [
+    assert model.flats == [
         shromazdeni.Flat("1", unit / 3, []),
         shromazdeni.Flat("2", unit * 2 / 3, []),
     ]
@@ -178,7 +177,7 @@ def test_add(simple_building, monkeypatch):
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
     voter = shromazdeni.Person("Petr Novák")
-    choice_from = mock.Mock(return_value=3)
+    choice_from = mock.Mock(return_value=2)
     monkeypatch.setattr("shromazdeni.choice_from", choice_from)
 
     cmd.do_add("1 2 3")
@@ -186,11 +185,15 @@ def test_add(simple_building, monkeypatch):
     assert out.getvalue() == (
         "1 owners:\n 1. Petr Novák\n"
         "2 owners:\n 1. Jana Nová\n"
-        "Ignoring 3. It is already represented by Jana Nová.\n"
+        "Ignoring 3. It is already represented by Radoslava Květná.\n"
     )
     assert simple_building.get_flat("1").represented == voter
     assert simple_building.get_flat("2").represented == voter
-    assert choice_from.called_once_with("Select representation", [], out)
+    choice_from.assert_called_once_with(
+        "Select representation",
+        ["New Person", "Jana Nová", "Petr Novák", "Radoslava Květná"],
+        out,
+    )
 
 
 def test_add_new_person(simple_building, monkeypatch):
@@ -203,8 +206,153 @@ def test_add_new_person(simple_building, monkeypatch):
 
     cmd.do_add("1")
 
-    assert out.getvalue() == ("1 owners:\n 1. Petr Novák\n")
+    assert out.getvalue() == "1 owners:\n 1. Petr Novák\n"
     assert simple_building.get_flat("1").represented == voter
+
+
+def test_complete_remove():
+    third = fractions.Fraction(1) / 3
+    model = shromazdeni.Model(
+        [
+            shromazdeni.Flat(
+                "777/1", third, [], represented=shromazdeni.Person("Radoslava Květná")
+            )
+        ]
+    )
+    cmd = shromazdeni.AppCmd(model)
+    model.add_person("Peter Pan")
+
+    possibilities = cmd.complete_remove("", "remove ", 9, 9)
+
+    assert possibilities == ["777/1", "Peter Pan"]
+
+
+def test_remove_with_empty_args(simple_building):
+    out = io.StringIO()
+    cmd = shromazdeni.AppCmd(simple_building, stdout=out)
+
+    cmd.do_remove("")
+
+    assert out.getvalue().startswith("No argument")
+
+
+def test_remove_with_bad_args(simple_building):
+    out = io.StringIO()
+    cmd = shromazdeni.AppCmd(simple_building, stdout=out)
+
+    cmd.do_remove("A")
+
+    assert out.getvalue() == '"A" is neither flat or person.\n'
+
+
+def test_remove_with_not_represented_flat(simple_building):
+    out = io.StringIO()
+    cmd = shromazdeni.AppCmd(simple_building, stdout=out)
+
+    cmd.do_remove("1")
+
+    assert out.getvalue() == '"1" is not represented.\n'
+
+
+def test_remove_with_flat(simple_building):
+    out = io.StringIO()
+    cmd = shromazdeni.AppCmd(simple_building, stdout=out)
+
+    cmd.do_remove("3")
+
+    assert out.getvalue() == (
+        "Radoslava Květná no longer represents 3.\n" "Radoslava Květná left.\n"
+    )
+    assert not simple_building.get_flat("3").represented
+    assert not simple_building.get_person_names("Radoslava Květná")
+
+
+def test_remove_with_flat_person_represents_more_flats(simple_building):
+    out = io.StringIO()
+    simple_building.represent_flat("1", "Radoslava Květná")
+    cmd = shromazdeni.AppCmd(simple_building, stdout=out)
+
+    cmd.do_remove("3")
+
+    assert out.getvalue() == "Radoslava Květná no longer represents 3.\n"
+    assert not simple_building.get_flat("3").represented
+    assert simple_building.get_flat("1").represented
+    assert simple_building.get_person_names("Radoslava Květná")
+
+
+def test_remove_with_person(simple_building):
+    out = io.StringIO()
+    cmd = shromazdeni.AppCmd(simple_building, stdout=out)
+
+    cmd.do_remove("Radoslava Květná")
+
+    assert out.getvalue() == (
+        "Radoslava Květná no longer represents 3.\n" "Radoslava Květná left.\n"
+    )
+    assert not simple_building.get_flat("3").represented
+    assert not simple_building.get_person_names("Radoslava Květná")
+
+
+@freezegun.freeze_time("2017-01-14")
+def test_default_log_name():
+    assert (
+        shromazdeni.CommandLogger.default_logname("flats.json") == "flats.20170114.log"
+    )
+
+
+def test_parse_logfile():
+    model = mock.Mock()
+    fin = io.StringIO(
+        """\
+date,function,args
+10:01,command1,1,2,3
+10:02,command2,"string"
+"""
+    )
+
+    shromazdeni.CommandLogger.parse_logfile(fin, model)
+
+    model.command1.assert_called_once_with("1", "2", "3")
+    model.command2.assert_called_once_with("string")
+
+
+def test_create_logfile(tmp_path):
+    filepath = tmp_path / "file.tmp"
+
+    shromazdeni.CommandLogger.create_logfile(filepath)
+
+    with open(filepath, "r") as fin:
+        content = fin.read()
+    assert content == "date,operation,*args\n"
+
+
+@shromazdeni.log_command
+def fake_operation(model, a, b):
+    del model  # Unused
+    del a  # Unused
+    del b  # Unused
+    return 1
+
+
+def test_log_command_decorator():
+    model = mock.Mock()
+
+    result = fake_operation(model, "operand1", "operand2")
+
+    assert result == 1
+    model._logger.log.assert_called_once_with(
+        "fake_operation", ("operand1", "operand2")
+    )
+
+
+@freezegun.freeze_time("2017-01-14T10:22")
+def test_logger_log():
+    fout = io.StringIO()
+    logger = shromazdeni.CommandLogger(fout)
+
+    logger.log("operation", ("a", "b"))
+
+    assert fout.getvalue() == "10:22,operation,a,b\r\n"
 
 
 if __name__ == "__main__":
