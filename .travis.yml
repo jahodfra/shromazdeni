@@ -5,6 +5,9 @@ python:
 install:
   - pip install -r requirements.txt
 before_script:
+  - sudo locale-gen cs_CZ
+  - sudo locale-gen cs_CZ.UTF-8
+  - sudo update-locale
   - pip install -r test_requirements.txt
 script:
   - export MYPYPATH=$VIRTUAL_ENV/lib/python3.7/site-packages/

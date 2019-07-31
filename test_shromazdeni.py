@@ -6,19 +6,7 @@ import freezegun
 import pytest
 
 import shromazdeni
-
-
-def test_format_persons_single_person():
-    address = "Novák Jan, Pařížská 32, Praha 1"
-    assert shromazdeni.format_persons(address) == [address]
-
-
-def test_format_persons_sjm():
-    address = "SJM Novák Jan a Nováková Petra, Pařížská 32, Praha 1"
-    assert shromazdeni.format_persons(address) == [
-        "Novák Jan, Pařížská 32, Praha 1",
-        "Nováková Petra, Pařížská 32, Praha 1",
-    ]
+import utils
 
 
 @pytest.fixture
@@ -26,9 +14,9 @@ def simple_building():
     third = fractions.Fraction(1) / 3
     model = shromazdeni.Model(
         [
-            shromazdeni.Flat("1", third, ["Petr Novák"]),
-            shromazdeni.Flat("2", third, ["Jana Nová"]),
-            shromazdeni.Flat("3", third, ["Oldřich Starý"]),
+            utils.Flat("1", third, [utils.Owner("Petr Novák")]),
+            utils.Flat("2", third, [utils.Owner("Jana Nová")]),
+            utils.Flat("3", third, [utils.Owner("Oldřich Starý")]),
         ]
     )
     model.add_person("Radoslava Květná")
@@ -78,9 +66,9 @@ def test_complete_flat():
     third = fractions.Fraction(1) / 3
     model = shromazdeni.Model(
         [
-            shromazdeni.Flat("777/1", third, []),
-            shromazdeni.Flat("777/2", third, []),
-            shromazdeni.Flat("778/3", third, []),
+            utils.Flat("777/1", third, []),
+            utils.Flat("777/2", third, []),
+            utils.Flat("778/3", third, []),
         ]
     )
     cmd = shromazdeni.AppCmd(model)
@@ -88,36 +76,6 @@ def test_complete_flat():
     possibilities = cmd.complete_flat("777", "flat 777/", 9, 9)
 
     assert possibilities == ["777/1", "777/2"]
-
-
-def test_load_json():
-    json_flats = [
-        {"name": "1", "fraction": "1/3", "owners": [{"name": "P1", "fraction": "1"}]},
-        {"name": "2", "fraction": "2/3", "owners": [{"name": "P2", "fraction": "1"}]},
-    ]
-
-    model = shromazdeni.Model.load(json_flats)
-
-    unit = fractions.Fraction(1)
-    assert model.flats == [
-        shromazdeni.Flat("1", unit / 3, ["P1"]),
-        shromazdeni.Flat("2", unit * 2 / 3, ["P2"]),
-    ]
-
-
-def test_load_json_shorten_names():
-    json_flats = [
-        {"name": "100/1", "fraction": "1/3", "owners": []},
-        {"name": "100/2", "fraction": "2/3", "owners": []},
-    ]
-
-    model = shromazdeni.Model.load(json_flats)
-
-    unit = fractions.Fraction(1)
-    assert model.flats == [
-        shromazdeni.Flat("1", unit / 3, []),
-        shromazdeni.Flat("2", unit * 2 / 3, []),
-    ]
 
 
 def test_add_without_param(simple_building):
@@ -176,7 +134,7 @@ def test_choice_from(monkeypatch):
 def test_add(simple_building, monkeypatch):
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
-    voter = shromazdeni.Person("Petr Novák")
+    voter = utils.Person("Petr Novák")
     choice_from = mock.Mock(return_value=2)
     monkeypatch.setattr("shromazdeni.choice_from", choice_from)
 
@@ -199,7 +157,7 @@ def test_add(simple_building, monkeypatch):
 def test_add_new_person(simple_building, monkeypatch):
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
-    voter = shromazdeni.Person("Jakub Rychlý")
+    voter = utils.Person("Jakub Rychlý")
     monkeypatch.setattr("shromazdeni.choice_from", lambda *args, **kwargs: 0)
     monkeypatch.setattr("builtins.input", lambda q: "Jakub Rychlý")
     monkeypatch.setattr("shromazdeni.confirm", lambda q: True)
@@ -213,11 +171,7 @@ def test_add_new_person(simple_building, monkeypatch):
 def test_complete_remove():
     third = fractions.Fraction(1) / 3
     model = shromazdeni.Model(
-        [
-            shromazdeni.Flat(
-                "777/1", third, [], represented=shromazdeni.Person("Radoslava Květná")
-            )
-        ]
+        [utils.Flat("777/1", third, [], represented=utils.Person("Radoslava Květná"))]
     )
     cmd = shromazdeni.AppCmd(model)
     model.add_person("Peter Pan")

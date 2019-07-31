@@ -3,39 +3,11 @@ import cmd
 import collections
 import csv
 import datetime
-import fractions
 import json
 import os
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Set, TextIO
+from typing import Dict, List, TextIO
 
-
-@dataclass
-class Person:
-    """Represents a person present on the gathering."""
-
-    name: str
-    # Eventually it will contain a code
-
-
-@dataclass
-class Flat:
-    name: str
-    fraction: fractions.Fraction
-    owners: List[str]  # Owner can be SJM
-    represented: Optional[Person] = None
-
-    @property
-    def sort_key(self):
-        return tuple(int(n) for n in self.name.split("/"))
-
-    @property
-    def nice_name(self):
-        return ("*" if self.represented else " ") + self.name
-
-    @property
-    def persons(self) -> Set[str]:
-        return set(person for owner in self.owners for person in format_persons(owner))
+import utils
 
 
 def setup_readline_if_available():
@@ -48,17 +20,6 @@ def setup_readline_if_available():
         readline.set_completer_delims(delims)
     except ImportError:
         pass
-
-
-def format_persons(name):
-    if name.startswith("SJM"):
-        name = name[3:].strip()
-        names, address = name.split(",", 1)
-        address = address.strip()
-        name1, name2 = names.split(" a ")
-        return [", ".join((name1, address)), ", ".join((name2, address))]
-    else:
-        return [name]
 
 
 def choice_from(title, choices, stdout):
@@ -133,34 +94,13 @@ class CommandLogger:
 class Model:
     """Abstraction layer above json file from the parser."""
 
-    def __init__(self, flats: List[Flat]):
+    def __init__(self, flats: List[utils.Flat]):
         self._flats = collections.OrderedDict((flat.name, flat) for flat in flats)
-        self._present_persons: Dict[str, Person] = {}
+        self._present_persons: Dict[str, utils.Person] = {}
         self._logger = None
 
     def register_logger(self, logger):
         self._logger = logger
-
-    @staticmethod
-    def _convert_flat(flat, shorten_name):
-        if shorten_name:
-            shortname = flat["name"]
-        else:
-            shortname = flat["name"].split("/", 1)[1]
-
-        return Flat(
-            name=shortname,
-            owners=[owner["name"] for owner in flat["owners"]],
-            fraction=fractions.Fraction(flat["fraction"]),
-        )
-
-    @classmethod
-    def load(cls, json_flats):
-        prefixes = set(flat["name"].split("/")[0] for flat in json_flats)
-        shorten_name = len(prefixes) > 1
-        flats = [cls._convert_flat(flat, shorten_name) for flat in json_flats]
-        flats.sort(key=lambda flat: flat.sort_key)
-        return cls(flats)
 
     @property
     def flats(self):
@@ -184,7 +124,7 @@ class Model:
     @log_command
     def add_person(self, name):
         assert not self.person_exists(name)
-        self._present_persons[name] = Person(name)
+        self._present_persons[name] = utils.Person(name)
 
     @log_command
     def remove_flat_representative(self, flat_name):
@@ -237,7 +177,7 @@ class AppCmd(cmd.Cmd):
                 return
             self.stdout.write("Owners:\n")
             for i, owner in enumerate(flat.owners, start=1):
-                self.stdout.write(f"{i:2d}. {owner}\n")
+                self.stdout.write(f"{i:2d}. {owner.name}\n")
             if flat.represented:
                 self.stdout.write(f"Represented by {flat.represented.name}\n")
         else:
@@ -273,7 +213,7 @@ class AppCmd(cmd.Cmd):
                     new_flats.append(fname)
                     self.stdout.write(f"{fname} owners:\n")
                     for i, owner in enumerate(flat.owners, start=1):
-                        self.stdout.write(f"{i:2d}. {owner}\n")
+                        self.stdout.write(f"{i:2d}. {owner.name}\n")
         except KeyError:
             self.stdout.write(f'Unit "{fname}" not found.\n')
             return
@@ -395,7 +335,7 @@ def main():
     args = parser.parse_args()
     setup_readline_if_available()
     json_flats = json.load(args.flats)
-    model = Model.load(json_flats)
+    model = Model(utils.from_json_to_flats(json_flats))
     default_filename = CommandLogger.default_logname(args.flats.name)
     logfile = open_or_create_logfile(args.log, model, default_filename)
     model.register_logger(CommandLogger(logfile))
