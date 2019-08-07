@@ -1,5 +1,6 @@
 import fractions
 import io
+from datetime import datetime
 from unittest import mock
 
 import freezegun
@@ -134,7 +135,7 @@ def test_choice_from(monkeypatch):
 def test_add(simple_building, monkeypatch):
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
-    voter = utils.Person("Petr Novák")
+    voter = utils.Person("Petr Novák", datetime.min)
     choice_from = mock.Mock(return_value=2)
     monkeypatch.setattr("shromazdeni.choice_from", choice_from)
 
@@ -145,8 +146,8 @@ def test_add(simple_building, monkeypatch):
         "2 owners:\n 1. Jana Nová\n"
         "Ignoring 3. It is already represented by Radoslava Květná.\n"
     )
-    assert simple_building.get_flat("1").represented == voter
-    assert simple_building.get_flat("2").represented == voter
+    assert simple_building.get_flat("1").represented.name == voter.name
+    assert simple_building.get_flat("2").represented.name == voter.name
     choice_from.assert_called_once_with(
         "Select representation",
         ["New Person", "Jana Nová", "Petr Novák", "Radoslava Květná"],
@@ -157,7 +158,7 @@ def test_add(simple_building, monkeypatch):
 def test_add_new_person(simple_building, monkeypatch):
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
-    voter = utils.Person("Jakub Rychlý")
+    voter = utils.Person("Jakub Rychlý", datetime.min)
     monkeypatch.setattr("shromazdeni.choice_from", lambda *args, **kwargs: 0)
     monkeypatch.setattr("builtins.input", lambda q: "Jakub Rychlý")
     monkeypatch.setattr("shromazdeni.confirm", lambda q: True)
@@ -165,13 +166,20 @@ def test_add_new_person(simple_building, monkeypatch):
     cmd.do_add("1")
 
     assert out.getvalue() == "1 owners:\n 1. Petr Novák\n"
-    assert simple_building.get_flat("1").represented == voter
+    assert simple_building.get_flat("1").represented.name == voter.name
 
 
 def test_complete_remove():
     third = fractions.Fraction(1) / 3
     model = shromazdeni.Model(
-        [utils.Flat("777/1", third, [], represented=utils.Person("Radoslava Květná"))]
+        [
+            utils.Flat(
+                "777/1",
+                third,
+                [],
+                represented=utils.Person("Radoslava Květná", datetime.min),
+            )
+        ]
     )
     cmd = shromazdeni.AppCmd(model)
     model.add_person("Peter Pan")

@@ -2,9 +2,10 @@ import argparse
 import cmd
 import collections
 import csv
-import datetime
 import json
 import os
+import locale
+from datetime import datetime
 from typing import Dict, List, TextIO
 
 import utils
@@ -62,7 +63,7 @@ class CommandLogger:
 
     @staticmethod
     def default_logname(flats_filename: str) -> str:
-        now = datetime.datetime.now().strftime("%Y%m%d")
+        now = datetime.now().strftime("%Y%m%d")
         filename, _ext = os.path.splitext(flats_filename)
         filename += f".{now}.log"
         return filename
@@ -84,7 +85,7 @@ class CommandLogger:
 
     def log(self, func_name, args):
         assert all(isinstance(arg, str) for arg in args)
-        now = datetime.datetime.now().strftime("%H:%M")
+        now = datetime.now().strftime("%H:%M")
         row = [now, func_name]
         row += args
         self._writer.writerow(row)
@@ -124,7 +125,7 @@ class Model:
     @log_command
     def add_person(self, name):
         assert not self.person_exists(name)
-        self._present_persons[name] = utils.Person(name)
+        self._present_persons[name] = utils.Person(name, datetime.now())
 
     @log_command
     def remove_flat_representative(self, flat_name):
@@ -157,6 +158,7 @@ class Model:
 
 class AppCmd(cmd.Cmd):
     def __init__(self, model, completekey="tab", stdin=None, stdout=None):
+        self.pm_index = 1
         self.model = model
         self.set_prompt()
         super().__init__(completekey=completekey, stdin=stdin, stdout=stdout)
@@ -284,14 +286,44 @@ class AppCmd(cmd.Cmd):
         return flats + self.model.get_person_names(text)
 
     def do_presence(self, args):
-        """Print presence."""
-        if args and not args.isspace():
-            pass
-
-        # Without parameter, writes who is present
-        # With the name it writes the flats the person represents
-        # TODO: finish
-        pass
+        """Prints presence into file."""
+        filename = args or "presence.html"
+        rows = []
+        sum_share = 0.0
+        max_time = datetime.min
+        max_pm = 0
+        n_flats = 0
+        representatives = set()
+        for flat in self.model.flats:
+            if flat.represented:
+                repr_name = utils.convert_name(flat.represented.name)
+                time = flat.represented.created_at.strftime("%H:%M")
+                sum_share += float(flat.fraction)
+                max_time = max(max_time, flat.represented.created_at)
+                n_flats += 1
+                representatives.add(flat.represented.name)
+            else:
+                repr_name = ""
+                time = ""
+            for i, owner in enumerate(flat.owners, start=1):
+                share = float(flat.fraction * owner.fraction)
+                name = utils.convert_name(owner.name)
+                rows.append((name, flat.name, i, f"{share:.2%}", "", repr_name, time))
+        rows.sort(key=lambda x: locale.strxfrm(x[0]))
+        last_row = (
+            "Celkem",
+            n_flats,
+            "",
+            f"{sum_share:.2%}",
+            max_pm,
+            len(representatives),
+            max_time.strftime("%H:%M"),
+        )
+        with open(filename, "w") as fout:
+            fout.write(utils.CSS_STYLE)
+            utils.write_table(
+                fout, rows, "Presenční listina", PRESENCE_FIELDS, last_row=last_row
+            )
 
     def do_quit(self, args):
         """Quit the app."""
@@ -302,6 +334,17 @@ class AppCmd(cmd.Cmd):
     do_f = do_flat
     complete_f = complete_flat
     do_EOF = do_quit
+
+
+PRESENCE_FIELDS = [
+    utils.Field("Vlastník", "owner"),
+    utils.Field("Jednotka", "unit"),
+    utils.Field("Část", "sub"),
+    utils.Field("Podíl", "size"),
+    utils.Field("PM", "ref"),
+    utils.Field("Hlasuje", "owner"),
+    utils.Field("Čas registrace", "time"),
+]
 
 
 def open_or_create_logfile(logfile: TextIO, model: Model, default_filename: str):
@@ -318,6 +361,7 @@ def open_or_create_logfile(logfile: TextIO, model: Model, default_filename: str)
 
 
 def main():
+    locale.setlocale(locale.LC_ALL, "cs_CZ.UTF-8")
     parser = argparse.ArgumentParser(
         description="Records presence and votes on a gathering."
     )

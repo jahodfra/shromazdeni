@@ -6,82 +6,23 @@ import sys
 import utils
 
 
-def convert_name(name):
-    if name and "," in name:
-        name, extra = name.split(",", 1)
-    if name.startswith("SJM"):
-        name = name[4:] + " SJM"
-    return name
-
-
-CSS_STYLE = """
-<style>
-td.unit {
-    font-size: 120%;
-}
-.unit, .sub, .size {
-    text-align: center;
-}
-.ref {
-    min-width: 1.5cm;
-}
-.signature {
-    min-width: 4cm;
-}
-.surname {
-    font-size: 120%;
-    font-weight: bold;
-}
-table {
-    border: 1px solid black;
-    border-collapse: collapse;
-    width: 100%;
-    font-size: 9pt;
-    page-break-after: always;
-}
-th, td {
-    border: 1px solid black;
-    padding: 2px;
-}
-</style>"""
-FIELD_NAMES = ["owner", "unit", "sub", "size", "ref", "signature"]
-
-
-def write_table(fout, rows, header):
-    fout.write(
-        f"""
-<h2>{header}</h2>
-<table>
-<thead>
-<tr>
-<th class="owner">Vlastník</th>
-<th class="unit">Jednotka</th>
-<th class="sub">Část</th>
-<th class="size">Podíl</th>
-<th class="ref">PM</th>
-<th class="signature">Podpis</th>
-</tr>
-</thead>
-<tbody>"""
-    )
-    for row in rows:
-        fout.write("<tr>")
-        for field, value in zip(FIELD_NAMES, row):
-            if field == "owner" and " " in value:
-                surname, rest = value.split(" ", 1)
-                value = f'<span class="surname">{surname}</span> {rest}'
-            fout.write(f'<td class="{field}">{value}</td>')
-        fout.write("</tr>")
-    fout.write("""</tbody></table>""")
+FIELDS = [
+    utils.Field("Vlastník", "owner"),
+    utils.Field("Jednotka", "unit"),
+    utils.Field("Část", "sub"),
+    utils.Field("Podíl", "size"),
+    utils.Field("PM", "ref"),
+    utils.Field("Podpis", "signature"),
+]
 
 
 def write_flat_table(fout, flat):
     rows = []
     for i, owner in enumerate(flat.owners, start=1):
         share = float(owner.fraction)
-        name = convert_name(owner.name)
+        name = utils.convert_name(owner.name)
         rows.append((name, flat.name, i, f"{share:.2%}", "", ""))
-    write_table(fout, rows, f"Plná moc pro jednotku {flat.name}")
+    utils.write_table(fout, rows, f"Plná moc pro jednotku {flat.name}", FIELDS)
 
 
 def main():
@@ -113,11 +54,11 @@ def main():
             continue
         for i, owner in enumerate(flat.owners, start=1):
             share = float(flat.fraction * owner.fraction)
-            name = convert_name(owner.name)
+            name = utils.convert_name(owner.name)
             rows.append((name, flat.name, i, f"{share:.2%}", "", ""))
     rows.sort(key=lambda x: locale.strxfrm(x[0]))
 
-    sys.stdout.write(CSS_STYLE)
+    sys.stdout.write(utils.CSS_STYLE)
     for excluded in args.separate:
         filtered = [flat for flat in flats if flat.name == excluded]
         if not filtered:
@@ -126,7 +67,7 @@ def main():
         flat = filtered[0]
         write_flat_table(sys.stdout, flat)
 
-    write_table(sys.stdout, rows, "Prezenční listina")
+    utils.write_table(sys.stdout, rows, "Prezenční listina", FIELDS)
 
 
 if __name__ == "__main__":
