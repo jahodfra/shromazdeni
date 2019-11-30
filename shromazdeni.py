@@ -155,6 +155,14 @@ class Model:
     def get_person_names(self, prefix):
         return [n for n in self._present_persons if n.startswith(prefix)]
 
+    def get_other_representatives(self, person_name):
+        flats = []
+        for flat in self._flats.values():
+            if not flat.represented and person_name in flat.persons:
+                flats.append(flat.name)
+        flats.sort()
+        return flats
+
 
 class AppCmd(cmd.Cmd):
     def __init__(self, model, completekey="tab", stdin=None, stdout=None):
@@ -188,6 +196,11 @@ class AppCmd(cmd.Cmd):
     def complete_flat(self, text, line, beginx, endx):
         return [flat.name for flat in self.model.flats if flat.name.startswith(text)]
 
+    def _write_flat_owners(self, flat):
+        self.stdout.write(f"{flat.name} owners:\n")
+        for i, owner in enumerate(flat.owners, start=1):
+            self.stdout.write(f"{i:2d}. {owner.name}\n")
+
     def do_add(self, args):
         """Adds the representation for flats."""
         # The command seems bit nonintuitive.
@@ -205,6 +218,8 @@ class AppCmd(cmd.Cmd):
             for fname in flats:
                 flat = self.model.get_flat(fname)
                 if flat.represented:
+                    # We can reference a represented flat just to populate
+                    # a list of persons.
                     persons.add(flat.represented.name)
                     self.stdout.write(
                         f"Ignoring {fname}. It is already "
@@ -213,15 +228,14 @@ class AppCmd(cmd.Cmd):
                 else:
                     persons.update(flat.persons)
                     new_flats.append(fname)
-                    self.stdout.write(f"{fname} owners:\n")
-                    for i, owner in enumerate(flat.owners, start=1):
-                        self.stdout.write(f"{i:2d}. {owner.name}\n")
+                    self._write_flat_owners(flat)
         except KeyError:
             self.stdout.write(f'Unit "{fname}" not found.\n')
             return
         flats = new_flats
         if not flats:
             return
+        # Select a representative or create a new person
         persons = ["New Person"] + sorted(persons)
         owner_index = choice_from("Select representation", persons, self.stdout)
         if owner_index == -1:
@@ -235,8 +249,29 @@ class AppCmd(cmd.Cmd):
         if not self.model.person_exists(name):
             # Prevent creating already existing person.
             self.model.add_person(name)
+
+        represented_persons = set()
+        # Assign a representative
         for fname in flats:
             self.model.represent_flat(fname, name)
+            represented_persons.update(self.model.get_flat(fname).persons)
+        # Check if the added person doesn't have other shares in the building.
+        # e.g. another flat or a share on garage hall.
+        other_flats = self.model.get_other_representatives(name)
+        for other_flat in other_flats:
+            self._write_flat_owners(self.model.get_flat(other_flat))
+            if confirm(f"Should the person also represent flat {other_flat}?"):
+                self.model.represent_flat(other_flat, name)
+                represented_persons.update(self.model.get_flat(other_flat).persons)
+        # Write what all represented persons also own.
+        # that's important for garage hall.
+        hints = []
+        for flat in self.model.flats:
+            if not flat.represented and represented_persons & flat.persons:
+                hints.append(flat.name)
+        if hints:
+            hint_str = ", ".join(hints)
+            self.stdout.write(f"Should {name} also represent: {hint_str}?\n")
         self.set_prompt()
 
     complete_add = complete_flat

@@ -1,0 +1,9 @@
+env
+htmlcov
+__pycache__
+*.html
+*.json
+*.log
+.*
+!/.gitignore
+!/.pre-commit-config.yaml

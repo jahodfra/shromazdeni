@@ -10,12 +10,10 @@ before_script:
   - sudo update-locale
   - pip install -r test_requirements.txt
 script:
-  - export MYPYPATH=$VIRTUAL_ENV/lib/python3.7/site-packages/
   - export PYTHONPATH=$PYTHONPATH:$(pwd)
   - py.test . --cov=. --cov-report=term-missing
   - flake8
   - black --check .
-  - mypy .
+  - mypy --ignore-missing-imports .
 after_success:
   - coveralls
-

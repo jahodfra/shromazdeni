@@ -25,6 +25,19 @@ def simple_building():
     return model
 
 
+@pytest.fixture
+def building_with_one_owner():
+    share = fractions.Fraction(1) / 2
+    return shromazdeni.Model(
+        [
+            utils.Flat("1", share, [utils.Owner("Petr Novák")]),
+            utils.Flat(
+                "2", share, [utils.Owner("Petr Novák"), utils.Owner("Jana Nová")]
+            ),
+        ]
+    )
+
+
 def test_flat_with_param(simple_building):
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
@@ -167,6 +180,36 @@ def test_add_new_person(simple_building, monkeypatch):
 
     assert out.getvalue() == "1 owners:\n 1. Petr Novák\n"
     assert simple_building.get_flat("1").represented.name == voter.name
+
+
+def test_add_ask_for_other_unit(building_with_one_owner, monkeypatch):
+    out = io.StringIO()
+    cmd = shromazdeni.AppCmd(building_with_one_owner, stdout=out)
+    voter = "Petr Novák"
+    monkeypatch.setattr("shromazdeni.choice_from", lambda *args, **kwargs: 1)
+    monkeypatch.setattr("shromazdeni.confirm", lambda q: True)
+
+    cmd.do_add("1")
+
+    assert out.getvalue() == (
+        "1 owners:\n 1. Petr Novák\n2 owners:\n 1. Petr Novák\n 2. Jana Nová\n"
+    )
+    assert building_with_one_owner.get_flat("1").represented.name == voter
+    assert building_with_one_owner.get_flat("2").represented.name == voter
+
+
+def test_add_inform_about_extra_unit(building_with_one_owner, monkeypatch):
+    out = io.StringIO()
+    cmd = shromazdeni.AppCmd(building_with_one_owner, stdout=out)
+    monkeypatch.setattr("shromazdeni.choice_from", lambda *args, **kwargs: 1)
+    monkeypatch.setattr("shromazdeni.confirm", lambda q: True)
+
+    cmd.do_add("2")
+
+    assert out.getvalue() == (
+        "2 owners:\n 1. Petr Novák\n 2. Jana Nová\n"
+        "Should Jana Nová also represent: 1?\n"
+    )
 
 
 def test_complete_remove():
