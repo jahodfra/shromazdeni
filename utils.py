@@ -1,7 +1,7 @@
 import fractions
 from datetime import datetime
 from dataclasses import dataclass
-from typing import NamedTuple, List, Optional, Set
+from typing import Dict, IO, List, NamedTuple, Optional, Set, Tuple
 
 
 @dataclass
@@ -27,11 +27,11 @@ class Flat:
     represented: Optional[Person] = None
 
     @property
-    def sort_key(self):
+    def sort_key(self) -> Tuple[int, ...]:
         return tuple(int(n) for n in self.name.split("/"))
 
     @property
-    def nice_name(self):
+    def nice_name(self) -> str:
         return ("*" if self.represented else " ") + self.name
 
     @property
@@ -41,7 +41,7 @@ class Flat:
         )
 
 
-def _convert_flat(flat, shorten_name):
+def _convert_flat(flat: Dict, shorten_name: bool) -> Flat:
     if shorten_name:
         shortname = flat["name"].split("/", 1)[1]
     else:
@@ -60,7 +60,7 @@ def _convert_flat(flat, shorten_name):
     )
 
 
-def from_json_to_flats(json_flats):
+def from_json_to_flats(json_flats: List) -> List[Flat]:
     prefixes = set(flat["name"].split("/")[0] for flat in json_flats)
     shorten_name = len(prefixes) == 1
     flats = [_convert_flat(flat, shorten_name) for flat in json_flats]
@@ -79,7 +79,7 @@ def format_persons(name: str) -> List[str]:
         return [name]
 
 
-def convert_name(name):
+def convert_name(name: str) -> str:
     if name and "," in name:
         name, extra = name.split(",", 1)
     if name.startswith("SJM"):
@@ -127,7 +127,9 @@ class Field(NamedTuple):
     style: str
 
 
-def write_table(fout, rows, header, fields: List[Field], last_row=None):
+def write_table(
+    fout: IO[str], rows: List, header: str, fields: List[Field], last_row: Tuple = None
+) -> None:
     fout.write(
         f"""
 <h2>{header}</h2>

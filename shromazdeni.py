@@ -6,12 +6,12 @@ import json
 import os
 import locale
 from datetime import datetime
-from typing import Dict, List, TextIO
+from typing import Any, Callable, Dict, IO, List, Optional, Set, TextIO, Tuple
 
 import utils
 
 
-def setup_readline_if_available():
+def setup_readline_if_available() -> None:
     # Slash is used as part of flat names.
     # We don't want to split the names so we can have simple auto completers.
     try:
@@ -23,7 +23,7 @@ def setup_readline_if_available():
         pass
 
 
-def choice_from(title, choices, stdout):
+def choice_from(title: str, choices: List[str], stdout: IO[str]) -> int:
     while True:
         stdout.write(title + "\n")
         for i, choice in enumerate(choices):
@@ -41,12 +41,12 @@ def choice_from(title, choices, stdout):
         stdout.write("invalid choice\n")
 
 
-def confirm(question):
+def confirm(question: str) -> bool:
     return input(f"\n{question} [yN]> ").lower() == "y"
 
 
-def log_command(func):
-    def wrapper(self, *args):
+def log_command(func: Callable) -> Callable:
+    def wrapper(self: "Model", *args: str) -> Any:
         result = func(self, *args)
         # On success
         if self._logger:
@@ -57,7 +57,7 @@ def log_command(func):
 
 
 class CommandLogger:
-    def __init__(self, logfile):
+    def __init__(self, logfile: IO[str]):
         self._logfile = logfile
         self._writer = csv.writer(logfile)
 
@@ -69,7 +69,7 @@ class CommandLogger:
         return filename
 
     @staticmethod
-    def parse_logfile(logfile, model):
+    def parse_logfile(logfile: IO[str], model: "Model") -> None:
         reader = csv.reader(logfile)
         next(reader)
         for row in reader:
@@ -77,13 +77,13 @@ class CommandLogger:
             getattr(model, func)(*row[2:])
 
     @staticmethod
-    def create_logfile(filename: str):
+    def create_logfile(filename: str) -> TextIO:
         fout = open(filename, "w")
         writer = csv.writer(fout)
         writer.writerow(["date", "operation", "*args"])
         return fout
 
-    def log(self, func_name, args):
+    def log(self, func_name: str, args: Tuple) -> None:
         assert all(isinstance(arg, str) for arg in args)
         now = datetime.now().strftime("%H:%M")
         row = [now, func_name]
@@ -98,64 +98,64 @@ class Model:
     def __init__(self, flats: List[utils.Flat]):
         self._flats = collections.OrderedDict((flat.name, flat) for flat in flats)
         self._present_persons: Dict[str, utils.Person] = {}
-        self._logger = None
+        self._logger: Optional[CommandLogger] = None
 
-    def register_logger(self, logger):
+    def register_logger(self, logger: CommandLogger) -> None:
         self._logger = logger
 
     @property
-    def flats(self):
+    def flats(self) -> List[utils.Flat]:
         return list(self._flats.values())
 
-    def get_flat(self, shortname):
+    def get_flat(self, shortname: str) -> utils.Flat:
         return self._flats[shortname]
 
     @property
-    def percent_represented(self):
+    def percent_represented(self) -> float:
         return sum(flat.fraction for flat in self.flats if flat.represented) * 100
 
     @log_command
-    def represent_flat(self, flat_name, person_name):
+    def represent_flat(self, flat_name: str, person_name: str) -> None:
         person = self._present_persons[person_name]
         self._flats[flat_name].represented = person
 
-    def person_exists(self, name):
+    def person_exists(self, name: str) -> bool:
         return name in self._present_persons
 
     @log_command
-    def add_person(self, name):
+    def add_person(self, name: str) -> None:
         assert not self.person_exists(name)
         self._present_persons[name] = utils.Person(name, datetime.now())
 
     @log_command
-    def remove_flat_representative(self, flat_name):
+    def remove_flat_representative(self, flat_name: str) -> None:
         flat = self._flats[flat_name]
         person = flat.represented
         if person:
             self._remove_flat_representative(flat_name)
 
-    def _remove_flat_representative(self, flat_name):
+    def _remove_flat_representative(self, flat_name: str) -> None:
         self._flats[flat_name].represented = None
 
     @log_command
-    def remove_person(self, name):
+    def remove_person(self, name: str) -> List[str]:
         person_flats = self.get_representative_flats(name)
         for flat_name in person_flats:
             self._remove_flat_representative(flat_name)
         del self._present_persons[name]
         return person_flats
 
-    def get_representative_flats(self, person_name):
+    def get_representative_flats(self, person_name: str) -> List[str]:
         return [
             flat.name
             for flat in self.flats
             if flat.represented and flat.represented.name == person_name
         ]
 
-    def get_person_names(self, prefix):
+    def get_person_names(self, prefix: str) -> List[str]:
         return [n for n in self._present_persons if n.startswith(prefix)]
 
-    def get_other_representatives(self, person_name):
+    def get_other_representatives(self, person_name: str) -> List[str]:
         flats = []
         for flat in self._flats.values():
             if not flat.represented and person_name in flat.persons:
@@ -165,18 +165,24 @@ class Model:
 
 
 class AppCmd(cmd.Cmd):
-    def __init__(self, model, completekey="tab", stdin=None, stdout=None):
+    def __init__(
+        self,
+        model: Model,
+        completekey: str = "tab",
+        stdin: IO[str] = None,
+        stdout: IO[str] = None,
+    ):
         self.pm_index = 1
         self.model = model
         self.set_prompt()
         super().__init__(completekey=completekey, stdin=stdin, stdout=stdout)
 
-    def set_prompt(self):
+    def set_prompt(self) -> None:
         percent = self.model.percent_represented
         can_start = "Y" if percent > 50 else "N"
         self.prompt = f"{can_start}{float(percent):.1f}> "
 
-    def do_flat(self, args):
+    def do_flat(self, args: str) -> None:
         """List all flats in the building or prints flat details."""
         args = args.strip()
         if args:
@@ -193,15 +199,15 @@ class AppCmd(cmd.Cmd):
         else:
             self.columnize([flat.nice_name for flat in self.model.flats])
 
-    def complete_flat(self, text, line, beginx, endx):
+    def complete_flat(self, text: str, line: str, beginx: int, endx: int) -> List[str]:
         return [flat.name for flat in self.model.flats if flat.name.startswith(text)]
 
-    def _write_flat_owners(self, flat):
+    def _write_flat_owners(self, flat: utils.Flat) -> None:
         self.stdout.write(f"{flat.name} owners:\n")
         for i, owner in enumerate(flat.owners, start=1):
             self.stdout.write(f"{i:2d}. {owner.name}\n")
 
-    def do_add(self, args):
+    def do_add(self, args: str) -> None:
         """Adds the representation for flats."""
         # The command seems bit nonintuitive.
         # We first enter name of flat so we don't have to
@@ -235,21 +241,9 @@ class AppCmd(cmd.Cmd):
         flats = new_flats
         if not flats:
             return
-        # Select a representative or create a new person
-        persons = ["New Person"] + sorted(persons)
-        owner_index = choice_from("Select representation", persons, self.stdout)
-        if owner_index == -1:
+        name = self._choose_person(persons)
+        if not name:
             return
-        if owner_index == 0:
-            name = input("Name: ")
-            if not confirm("Create new person?"):
-                return
-        else:
-            name = persons[owner_index]
-        if not self.model.person_exists(name):
-            # Prevent creating already existing person.
-            self.model.add_person(name)
-
         represented_persons = set()
         # Assign a representative
         for fname in flats:
@@ -274,14 +268,30 @@ class AppCmd(cmd.Cmd):
             self.stdout.write(f"Should {name} also represent: {hint_str}?\n")
         self.set_prompt()
 
+    def _choose_person(self, persons: Set[str]) -> Optional[str]:
+        options = ["New Person"] + sorted(persons)
+        owner_index = choice_from("Select representation", options, self.stdout)
+        if owner_index == -1:
+            return None
+        if owner_index == 0:
+            name = input("Name: ")
+            if not confirm("Create new person?"):
+                return None
+        else:
+            name = options[owner_index]
+        if not self.model.person_exists(name):
+            # Prevent creating already existing person.
+            self.model.add_person(name)
+        return name
+
     complete_add = complete_flat
 
-    def _remove_person(self, person_name):
+    def _remove_person(self, person_name: str) -> None:
         for flat in self.model.remove_person(person_name):
             self.stdout.write(f"{person_name} no longer represents {flat}.\n")
         self.stdout.write(f"{person_name} left.\n")
 
-    def do_remove(self, args):
+    def do_remove(self, args: str) -> None:
         """Removes person or flat representative."""
         args = args.strip()
         if not args:
@@ -292,10 +302,10 @@ class AppCmd(cmd.Cmd):
         except KeyError:
             pass
         else:
-            person = flat.represented
-            if not person:
+            if not flat.represented:
                 self.stdout.write(f'"{args}" is not represented.\n')
                 return
+            person = flat.represented
             flats = self.model.get_representative_flats(person.name)
             if len(flats) <= 1:
                 self._remove_person(person.name)
@@ -312,7 +322,9 @@ class AppCmd(cmd.Cmd):
         except KeyError:
             self.stdout.write(f'"{args}" is neither flat or person.\n')
 
-    def complete_remove(self, text, line, beginx, endx):
+    def complete_remove(
+        self, text: str, line: str, beginx: int, endx: int
+    ) -> List[str]:
         flats = [
             flat.name
             for flat in self.model.flats
@@ -320,7 +332,7 @@ class AppCmd(cmd.Cmd):
         ]
         return flats + self.model.get_person_names(text)
 
-    def do_presence(self, args):
+    def do_presence(self, args: str) -> None:
         """Prints presence into file."""
         filename = args or "presence.html"
         rows = []
@@ -360,7 +372,7 @@ class AppCmd(cmd.Cmd):
                 fout, rows, "Presenční listina", PRESENCE_FIELDS, last_row=last_row
             )
 
-    def do_quit(self, args):
+    def do_quit(self, args: str) -> bool:
         """Quit the app."""
         return confirm("Really quit?")
 
@@ -382,7 +394,9 @@ PRESENCE_FIELDS = [
 ]
 
 
-def open_or_create_logfile(logfile: TextIO, model: Model, default_filename: str):
+def open_or_create_logfile(
+    logfile: TextIO, model: Model, default_filename: str
+) -> TextIO:
     if not logfile:
         try:
             logfile = open(default_filename, "r+")
@@ -395,7 +409,7 @@ def open_or_create_logfile(logfile: TextIO, model: Model, default_filename: str)
     return logfile
 
 
-def main():
+def main() -> None:
     locale.setlocale(locale.LC_ALL, "cs_CZ.UTF-8")
     parser = argparse.ArgumentParser(
         description="Records presence and votes on a gathering."
