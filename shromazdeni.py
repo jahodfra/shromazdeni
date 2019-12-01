@@ -3,10 +3,24 @@ import cmd
 import collections
 import csv
 import json
-import os
 import locale
+import os
+import pathlib
 from datetime import datetime
-from typing import Any, Callable, Dict, IO, List, Optional, Set, TextIO, Tuple
+from typing import (
+    Any,
+    Callable,
+    cast,
+    Dict,
+    IO,
+    List,
+    Optional,
+    Set,
+    TextIO,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import utils
 
@@ -45,7 +59,11 @@ def confirm(question: str) -> bool:
     return input(f"\n{question} [yN]> ").lower() == "y"
 
 
-def log_command(func: Callable) -> Callable:
+FuncType = Callable[..., Any]
+F = TypeVar("F", bound=FuncType)
+
+
+def log_command(func: F) -> F:
     def wrapper(self: "Model", *args: str) -> Any:
         result = func(self, *args)
         # On success
@@ -53,7 +71,7 @@ def log_command(func: Callable) -> Callable:
             self._logger.log(func.__name__, args)
         return result
 
-    return wrapper
+    return cast(F, wrapper)
 
 
 class CommandLogger:
@@ -77,7 +95,7 @@ class CommandLogger:
             getattr(model, func)(*row[2:])
 
     @staticmethod
-    def create_logfile(filename: str) -> TextIO:
+    def create_logfile(filename: Union[str, pathlib.Path]) -> TextIO:
         fout = open(filename, "w")
         writer = csv.writer(fout)
         writer.writerow(["date", "operation", "*args"])

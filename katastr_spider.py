@@ -2,13 +2,15 @@
 
 Output is onwers of the units in the building.
 """
+from typing import Dict, List
 
 import scrapy
+import scrapy.http as http
 
 
-def parse_owners(response):
+def parse_owners(response: http.TextResponse) -> List[Dict]:
     rows = response.css("table.vlastnici tr")
-    owners = []
+    owners: List[Dict[str, str]] = []
     person_index = 0
 
     for row in rows[1:]:
@@ -38,15 +40,15 @@ class KatastrSpider(scrapy.Spider):
 
     def __init__(
         self,
-        region="Praha (okres Hlavní město Praha);554782",
-        town_part="400807",
-        building="365",
+        region: str = "Praha (okres Hlavní město Praha);554782",
+        town_part: str = "400807",
+        building: str = "365",
     ):
         self.region = region
         self.town_part = town_part
         self.building = building
 
-    def parse(self, response):
+    def parse(self, response: http.TextResponse) -> http.FormRequest:
         yield scrapy.FormRequest.from_response(
             response,
             formdata={
@@ -56,7 +58,7 @@ class KatastrSpider(scrapy.Spider):
             callback=self.parse_address,
         )
 
-    def parse_address(self, response):
+    def parse_address(self, response: http.TextResponse) -> http.FormRequest:
         yield scrapy.FormRequest.from_response(
             response,
             formdata={
@@ -68,13 +70,13 @@ class KatastrSpider(scrapy.Spider):
             callback=self.parse_building,
         )
 
-    def parse_building(self, response):
+    def parse_building(self, response: http.TextResponse) -> http.FormRequest:
         for link in response.xpath("//table[@summary='Vymezené jednotky']//a"):
             yield scrapy.Request(
                 response.urljoin(link.attrib["href"]), callback=self.parse_flat
             )
 
-    def parse_flat(self, response):
+    def parse_flat(self, response: http.TextResponse) -> http.FormRequest:
         table = response.xpath("//table[@summary='Atributy jednotky']")
         yield {
             "name": table.xpath("tr[1]/td[2]/strong/text()").get(),

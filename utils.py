@@ -12,6 +12,9 @@ class Person:
     created_at: datetime
     # Eventually it will contain a code
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Person) and self.name == other.name
+
 
 @dataclass
 class Owner:

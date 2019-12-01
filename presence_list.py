@@ -2,6 +2,7 @@ import argparse
 import json
 import locale
 import sys
+from typing import IO
 
 import utils
 
@@ -16,7 +17,7 @@ FIELDS = [
 ]
 
 
-def write_flat_table(fout, flat):
+def write_flat_table(fout: IO[str], flat: utils.Flat) -> None:
     rows = []
     for i, owner in enumerate(flat.owners, start=1):
         share = float(owner.fraction)
@@ -25,7 +26,7 @@ def write_flat_table(fout, flat):
     utils.write_table(fout, rows, f"Plná moc pro jednotku {flat.name}", FIELDS)
 
 
-def main():
+def main() -> None:
     locale.setlocale(locale.LC_ALL, "cs_CZ.UTF-8")
     parser = argparse.ArgumentParser(description="Prepare list for signatures.")
     parser.add_argument(

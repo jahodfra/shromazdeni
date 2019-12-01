@@ -1,17 +1,19 @@
 import fractions
 import io
+import pathlib
 from datetime import datetime
 from unittest import mock
 
 import freezegun
 import pytest
+from _pytest.monkeypatch import MonkeyPatch
 
 import shromazdeni
 import utils
 
 
 @pytest.fixture
-def simple_building():
+def simple_building() -> shromazdeni.Model:
     third = fractions.Fraction(1) / 3
     model = shromazdeni.Model(
         [
@@ -26,7 +28,7 @@ def simple_building():
 
 
 @pytest.fixture
-def building_with_one_owner():
+def building_with_one_owner() -> shromazdeni.Model:
     share = fractions.Fraction(1) / 2
     return shromazdeni.Model(
         [
@@ -38,7 +40,7 @@ def building_with_one_owner():
     )
 
 
-def test_flat_with_param(simple_building):
+def test_flat_with_param(simple_building: shromazdeni.Model) -> None:
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
 
@@ -47,7 +49,7 @@ def test_flat_with_param(simple_building):
     assert out.getvalue() == "Owners:\n 1. Petr Novák\n"
 
 
-def test_flat_with_representation(simple_building):
+def test_flat_with_representation(simple_building: shromazdeni.Model) -> None:
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
 
@@ -58,7 +60,7 @@ def test_flat_with_representation(simple_building):
     )
 
 
-def test_flat_with_bad_param(simple_building):
+def test_flat_with_bad_param(simple_building: shromazdeni.Model) -> None:
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
 
@@ -67,7 +69,7 @@ def test_flat_with_bad_param(simple_building):
     assert out.getvalue() == 'Unit "10" not found.\n'
 
 
-def test_flat_without_params(simple_building):
+def test_flat_without_params(simple_building: shromazdeni.Model) -> None:
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
 
@@ -76,7 +78,7 @@ def test_flat_without_params(simple_building):
     assert out.getvalue() == " 1   2  *3\n"
 
 
-def test_complete_flat():
+def test_complete_flat() -> None:
     third = fractions.Fraction(1) / 3
     model = shromazdeni.Model(
         [
@@ -92,7 +94,7 @@ def test_complete_flat():
     assert possibilities == ["777/1", "777/2"]
 
 
-def test_add_without_param(simple_building):
+def test_add_without_param(simple_building: shromazdeni.Model) -> None:
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
 
@@ -101,7 +103,7 @@ def test_add_without_param(simple_building):
     assert out.getvalue() == 'No flats passed.\nuse "add [flat1] [flat2]"\n'
 
 
-def test_add_with_bad_param(simple_building):
+def test_add_with_bad_param(simple_building: shromazdeni.Model) -> None:
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
 
@@ -110,18 +112,18 @@ def test_add_with_bad_param(simple_building):
     assert out.getvalue() == 'Unit "100" not found.\n'
 
 
-def test_confirm_yes(monkeypatch):
+def test_confirm_yes(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr("builtins.input", lambda q: "y")
     assert shromazdeni.confirm("Question")
 
 
-def test_confirm_no(monkeypatch):
+def test_confirm_no(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr("builtins.input", lambda q: "n")
     assert not shromazdeni.confirm("Question")
 
 
 @pytest.mark.parametrize("choice", ["-1", "invalid", "2"])
-def test_choice_from_invalid(monkeypatch, choice):
+def test_choice_from_invalid(monkeypatch: MonkeyPatch, choice: str) -> None:
     out = io.StringIO()
     input_func = mock.Mock(side_effect=[choice, ""])
     monkeypatch.setattr("builtins.input", input_func)
@@ -134,7 +136,7 @@ def test_choice_from_invalid(monkeypatch, choice):
     )
 
 
-def test_choice_from(monkeypatch):
+def test_choice_from(monkeypatch: MonkeyPatch) -> None:
     out = io.StringIO()
     input_func = mock.Mock(side_effect=["1"])
     monkeypatch.setattr("builtins.input", input_func)
@@ -145,7 +147,7 @@ def test_choice_from(monkeypatch):
     assert out.getvalue() == "Select\n 0) A\n 1) B\n"
 
 
-def test_add(simple_building, monkeypatch):
+def test_add(simple_building: shromazdeni.Model, monkeypatch: MonkeyPatch) -> None:
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
     voter = utils.Person("Petr Novák", datetime.min)
@@ -159,8 +161,8 @@ def test_add(simple_building, monkeypatch):
         "2 owners:\n 1. Jana Nová\n"
         "Ignoring 3. It is already represented by Radoslava Květná.\n"
     )
-    assert simple_building.get_flat("1").represented.name == voter.name
-    assert simple_building.get_flat("2").represented.name == voter.name
+    assert simple_building.get_flat("1").represented == voter
+    assert simple_building.get_flat("2").represented == voter
     choice_from.assert_called_once_with(
         "Select representation",
         ["New Person", "Jana Nová", "Petr Novák", "Radoslava Květná"],
@@ -168,7 +170,9 @@ def test_add(simple_building, monkeypatch):
     )
 
 
-def test_add_new_person(simple_building, monkeypatch):
+def test_add_new_person(
+    simple_building: shromazdeni.Model, monkeypatch: MonkeyPatch
+) -> None:
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
     voter = utils.Person("Jakub Rychlý", datetime.min)
@@ -179,13 +183,15 @@ def test_add_new_person(simple_building, monkeypatch):
     cmd.do_add("1")
 
     assert out.getvalue() == "1 owners:\n 1. Petr Novák\n"
-    assert simple_building.get_flat("1").represented.name == voter.name
+    assert simple_building.get_flat("1").represented == voter
 
 
-def test_add_ask_for_other_unit(building_with_one_owner, monkeypatch):
+def test_add_ask_for_other_unit(
+    building_with_one_owner: shromazdeni.Model, monkeypatch: MonkeyPatch
+) -> None:
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(building_with_one_owner, stdout=out)
-    voter = "Petr Novák"
+    voter = utils.Person("Petr Novák", datetime.min)
     monkeypatch.setattr("shromazdeni.choice_from", lambda *args, **kwargs: 1)
     monkeypatch.setattr("shromazdeni.confirm", lambda q: True)
 
@@ -194,11 +200,13 @@ def test_add_ask_for_other_unit(building_with_one_owner, monkeypatch):
     assert out.getvalue() == (
         "1 owners:\n 1. Petr Novák\n2 owners:\n 1. Petr Novák\n 2. Jana Nová\n"
     )
-    assert building_with_one_owner.get_flat("1").represented.name == voter
-    assert building_with_one_owner.get_flat("2").represented.name == voter
+    assert building_with_one_owner.get_flat("1").represented == voter
+    assert building_with_one_owner.get_flat("2").represented == voter
 
 
-def test_add_inform_about_extra_unit(building_with_one_owner, monkeypatch):
+def test_add_inform_about_extra_unit(
+    building_with_one_owner: shromazdeni.Model, monkeypatch: MonkeyPatch
+) -> None:
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(building_with_one_owner, stdout=out)
     monkeypatch.setattr("shromazdeni.choice_from", lambda *args, **kwargs: 1)
@@ -212,7 +220,7 @@ def test_add_inform_about_extra_unit(building_with_one_owner, monkeypatch):
     )
 
 
-def test_complete_remove():
+def test_complete_remove() -> None:
     third = fractions.Fraction(1) / 3
     model = shromazdeni.Model(
         [
@@ -232,7 +240,7 @@ def test_complete_remove():
     assert possibilities == ["777/1", "Peter Pan"]
 
 
-def test_remove_with_empty_args(simple_building):
+def test_remove_with_empty_args(simple_building: shromazdeni.Model) -> None:
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
 
@@ -241,7 +249,7 @@ def test_remove_with_empty_args(simple_building):
     assert out.getvalue().startswith("No argument")
 
 
-def test_remove_with_bad_args(simple_building):
+def test_remove_with_bad_args(simple_building: shromazdeni.Model) -> None:
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
 
@@ -250,7 +258,7 @@ def test_remove_with_bad_args(simple_building):
     assert out.getvalue() == '"A" is neither flat or person.\n'
 
 
-def test_remove_with_not_represented_flat(simple_building):
+def test_remove_with_not_represented_flat(simple_building: shromazdeni.Model) -> None:
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
 
@@ -259,7 +267,7 @@ def test_remove_with_not_represented_flat(simple_building):
     assert out.getvalue() == '"1" is not represented.\n'
 
 
-def test_remove_with_flat(simple_building):
+def test_remove_with_flat(simple_building: shromazdeni.Model) -> None:
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
 
@@ -272,7 +280,9 @@ def test_remove_with_flat(simple_building):
     assert not simple_building.get_person_names("Radoslava Květná")
 
 
-def test_remove_with_flat_person_represents_more_flats(simple_building):
+def test_remove_with_flat_person_represents_more_flats(
+    simple_building: shromazdeni.Model,
+) -> None:
     out = io.StringIO()
     simple_building.represent_flat("1", "Radoslava Květná")
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
@@ -285,7 +295,7 @@ def test_remove_with_flat_person_represents_more_flats(simple_building):
     assert simple_building.get_person_names("Radoslava Květná")
 
 
-def test_remove_with_person(simple_building):
+def test_remove_with_person(simple_building: shromazdeni.Model) -> None:
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
 
@@ -299,13 +309,13 @@ def test_remove_with_person(simple_building):
 
 
 @freezegun.freeze_time("2017-01-14")
-def test_default_log_name():
+def test_default_log_name() -> None:
     assert (
         shromazdeni.CommandLogger.default_logname("flats.json") == "flats.20170114.log"
     )
 
 
-def test_parse_logfile():
+def test_parse_logfile() -> None:
     model = mock.Mock()
     fin = io.StringIO(
         """\
@@ -321,7 +331,7 @@ date,function,args
     model.command2.assert_called_once_with("string")
 
 
-def test_create_logfile(tmp_path):
+def test_create_logfile(tmp_path: pathlib.Path) -> None:
     filepath = tmp_path / "file.tmp"
 
     shromazdeni.CommandLogger.create_logfile(filepath)
@@ -332,14 +342,14 @@ def test_create_logfile(tmp_path):
 
 
 @shromazdeni.log_command
-def fake_operation(model, a, b):
+def fake_operation(model: shromazdeni.Model, a: str, b: str) -> int:
     del model  # Unused
     del a  # Unused
     del b  # Unused
     return 1
 
 
-def test_log_command_decorator():
+def test_log_command_decorator() -> None:
     model = mock.Mock()
 
     result = fake_operation(model, "operand1", "operand2")
@@ -351,7 +361,7 @@ def test_log_command_decorator():
 
 
 @freezegun.freeze_time("2017-01-14T10:22")
-def test_logger_log():
+def test_logger_log() -> None:
     fout = io.StringIO()
     logger = shromazdeni.CommandLogger(fout)
 

@@ -5,12 +5,12 @@ import pytest
 import utils
 
 
-def test_format_persons_single_person():
+def test_format_persons_single_person() -> None:
     address = "Novák Jan, Pařížská 32, Praha 1"
     assert utils.format_persons(address) == [address]
 
 
-def test_format_persons_sjm():
+def test_format_persons_sjm() -> None:
     address = "SJM Novák Jan a Nováková Petra, Pařížská 32, Praha 1"
     assert utils.format_persons(address) == [
         "Novák Jan, Pařížská 32, Praha 1",
@@ -18,7 +18,7 @@ def test_format_persons_sjm():
     ]
 
 
-def test_load_json():
+def test_load_json() -> None:
     json_flats = [
         {"name": "1", "fraction": "1/3", "owners": [{"name": "P1", "fraction": "1"}]},
         {"name": "2", "fraction": "2/3", "owners": [{"name": "P2", "fraction": "1"}]},
@@ -33,7 +33,7 @@ def test_load_json():
     ]
 
 
-def test_load_json_shorten_names():
+def test_load_json_shorten_names() -> None:
     json_flats = [
         {"name": "100/1", "fraction": "1/3", "owners": []},
         {"name": "100/2", "fraction": "2/3", "owners": []},

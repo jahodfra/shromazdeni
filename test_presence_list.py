@@ -1,3 +1,4 @@
+import pathlib
 import sys
 
 import pytest
@@ -17,7 +18,7 @@ CONTENT = """
 """
 
 
-def test_presence_list(tmp_path):
+def test_presence_list(tmp_path: pathlib.Path) -> None:
     fpath = tmp_path / "flats.json"
     fpath.write_text(CONTENT)
     sys.argv = ["presence_list.py", fpath.as_posix(), "--separate", "1"]
