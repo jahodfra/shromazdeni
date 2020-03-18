@@ -22,7 +22,7 @@ from typing import (
     Union,
 )
 
-import utils
+from shromazdeni import utils
 
 
 def setup_readline_if_available() -> None:

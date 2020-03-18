@@ -8,11 +8,11 @@ before_script:
   - sudo locale-gen cs_CZ
   - sudo locale-gen cs_CZ.UTF-8
   - sudo update-locale
-  - pip install -r test_requirements.txt
+  - pip install -r tests/requirements.txt
 script:
   - export PYTHONPATH=$PYTHONPATH:$(pwd)
-  - py.test . --cov=. --cov-report=term-missing
-  - flake8
+  - py.test tests --cov=shromazdeni --cov-report=term-missing
+  - flake8 shromazdeni tests
   - black --check .
   - mypy --ignore-missing-imports .
 after_success:

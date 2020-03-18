@@ -3,7 +3,7 @@ import sys
 
 import pytest
 
-import presence_list
+from shromazdeni import presence_list
 
 
 CONTENT = """

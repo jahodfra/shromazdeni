@@ -4,7 +4,7 @@ import locale
 import sys
 from typing import IO
 
-import utils
+from shromazdeni import utils
 
 
 FIELDS = [

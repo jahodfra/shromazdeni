@@ -8,8 +8,8 @@ import freezegun
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
 
-import shromazdeni
-import utils
+from shromazdeni import shromazdeni
+from shromazdeni import utils
 
 
 @pytest.fixture
@@ -152,7 +152,7 @@ def test_add(simple_building: shromazdeni.Model, monkeypatch: MonkeyPatch) -> No
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
     voter = utils.Person("Petr Novák", datetime.min)
     choice_from = mock.Mock(return_value=2)
-    monkeypatch.setattr("shromazdeni.choice_from", choice_from)
+    monkeypatch.setattr("shromazdeni.shromazdeni.choice_from", choice_from)
 
     cmd.do_add("1 2 3")
 
@@ -176,9 +176,11 @@ def test_add_new_person(
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(simple_building, stdout=out)
     voter = utils.Person("Jakub Rychlý", datetime.min)
-    monkeypatch.setattr("shromazdeni.choice_from", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(
+        "shromazdeni.shromazdeni.choice_from", lambda *args, **kwargs: 0
+    )
     monkeypatch.setattr("builtins.input", lambda q: "Jakub Rychlý")
-    monkeypatch.setattr("shromazdeni.confirm", lambda q: True)
+    monkeypatch.setattr("shromazdeni.shromazdeni.confirm", lambda q: True)
 
     cmd.do_add("1")
 
@@ -192,8 +194,10 @@ def test_add_ask_for_other_unit(
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(building_with_one_owner, stdout=out)
     voter = utils.Person("Petr Novák", datetime.min)
-    monkeypatch.setattr("shromazdeni.choice_from", lambda *args, **kwargs: 1)
-    monkeypatch.setattr("shromazdeni.confirm", lambda q: True)
+    monkeypatch.setattr(
+        "shromazdeni.shromazdeni.choice_from", lambda *args, **kwargs: 1
+    )
+    monkeypatch.setattr("shromazdeni.shromazdeni.confirm", lambda q: True)
 
     cmd.do_add("1")
 
@@ -209,8 +213,10 @@ def test_add_inform_about_extra_unit(
 ) -> None:
     out = io.StringIO()
     cmd = shromazdeni.AppCmd(building_with_one_owner, stdout=out)
-    monkeypatch.setattr("shromazdeni.choice_from", lambda *args, **kwargs: 1)
-    monkeypatch.setattr("shromazdeni.confirm", lambda q: True)
+    monkeypatch.setattr(
+        "shromazdeni.shromazdeni.choice_from", lambda *args, **kwargs: 1
+    )
+    monkeypatch.setattr("shromazdeni.shromazdeni.confirm", lambda q: True)
 
     cmd.do_add("2")
 

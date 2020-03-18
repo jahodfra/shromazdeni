@@ -2,7 +2,7 @@ import fractions
 
 import pytest
 
-import utils
+import shromazdeni.utils as utils
 
 
 def test_format_persons_single_person() -> None:
