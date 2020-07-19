@@ -2,7 +2,8 @@ import fractions
 
 import pytest
 
-import shromazdeni.utils as utils
+from shromazdeni import business
+from shromazdeni import utils
 
 
 def test_format_persons_single_person() -> None:
@@ -28,8 +29,8 @@ def test_load_json() -> None:
 
     unit = fractions.Fraction(1)
     assert flats == [
-        utils.Flat("1", unit / 3, [utils.Owner("P1")]),
-        utils.Flat("2", unit * 2 / 3, [utils.Owner("P2")]),
+        business.Flat("1", unit / 3, [business.Owner("P1")], {"P1"}),
+        business.Flat("2", unit * 2 / 3, [business.Owner("P2")], {"P2"}),
     ]
 
 
@@ -42,7 +43,10 @@ def test_load_json_shorten_names() -> None:
     flats = utils.from_json_to_flats(json_flats)
 
     unit = fractions.Fraction(1)
-    assert flats == [utils.Flat("1", unit / 3, []), utils.Flat("2", unit * 2 / 3, [])]
+    assert flats == [
+        business.Flat("1", unit / 3, [], set()),
+        business.Flat("2", unit * 2 / 3, [], set()),
+    ]
 
 
 if __name__ == "__main__":

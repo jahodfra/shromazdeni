@@ -4,26 +4,30 @@ import locale
 import sys
 from typing import IO
 
+from shromazdeni import business
+
+# TODO: move to reports
+from shromazdeni.reports import utils as rutils
 from shromazdeni import utils
 
 
 FIELDS = [
-    utils.Field("Vlastník", "owner"),
-    utils.Field("Jednotka", "unit"),
-    utils.Field("Část", "sub"),
-    utils.Field("Podíl", "size"),
-    utils.Field("PM", "ref"),
-    utils.Field("Podpis", "signature"),
+    rutils.Field("Vlastník", "owner"),
+    rutils.Field("Jednotka", "unit"),
+    rutils.Field("Část", "sub"),
+    rutils.Field("Podíl", "size"),
+    rutils.Field("PM", "ref"),
+    rutils.Field("Podpis", "signature"),
 ]
 
 
-def write_flat_table(fout: IO[str], flat: utils.Flat) -> None:
+def write_flat_table(fout: IO[str], flat: business.Flat) -> None:
     rows = []
     for i, owner in enumerate(flat.owners, start=1):
         share = float(owner.fraction)
-        name = utils.convert_name(owner.name)
+        name = rutils.convert_name(owner.name)
         rows.append((name, flat.name, i, f"{share:.2%}", "", ""))
-    utils.write_table(fout, rows, f"Plná moc pro jednotku {flat.name}", FIELDS)
+    rutils.write_table(fout, rows, f"Plná moc pro jednotku {flat.name}", FIELDS)
 
 
 def main() -> None:
@@ -55,11 +59,11 @@ def main() -> None:
             continue
         for i, owner in enumerate(flat.owners, start=1):
             share = float(flat.fraction * owner.fraction)
-            name = utils.convert_name(owner.name)
+            name = rutils.convert_name(owner.name)
             rows.append((name, flat.name, i, f"{share:.2%}", "", ""))
     rows.sort(key=lambda x: locale.strxfrm(x[0]))
 
-    sys.stdout.write(utils.CSS_STYLE)
+    sys.stdout.write(rutils.CSS_STYLE)
     for excluded in args.separate:
         filtered = [flat for flat in flats if flat.name == excluded]
         if not filtered:
@@ -68,7 +72,7 @@ def main() -> None:
         flat = filtered[0]
         write_flat_table(sys.stdout, flat)
 
-    utils.write_table(sys.stdout, rows, "Prezenční listina", FIELDS)
+    rutils.write_table(sys.stdout, rows, "Prezenční listina", FIELDS)
 
 
 if __name__ == "__main__":

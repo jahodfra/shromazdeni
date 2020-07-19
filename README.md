@@ -14,5 +14,6 @@ pip install -r requirements.txt
 
 ## Použití
 ```bash
-env/bin/scrapy runspider katastr_spider.py -o flats.json -a region="Praha (okres Hlavní město Praha);554782" -a town_part=400807 -a building=365
+python shromazdeni/tools/crawler.py --region=Praha --street=Národní --home_number=55 --output=narodni55.json
+python shromazdeni narodni55.json
 ```

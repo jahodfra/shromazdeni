@@ -1,27 +1,15 @@
 import argparse
 import cmd
-import collections
 import csv
 import json
 import locale
 import os
 import pathlib
 from datetime import datetime
-from typing import (
-    Any,
-    Callable,
-    cast,
-    Dict,
-    IO,
-    List,
-    Optional,
-    Set,
-    TextIO,
-    Tuple,
-    TypeVar,
-    Union,
-)
+from typing import IO, List, Optional, Set, TextIO, Tuple, Union
 
+from shromazdeni import business
+from shromazdeni import reports
 from shromazdeni import utils
 
 
@@ -59,21 +47,6 @@ def confirm(question: str) -> bool:
     return input(f"\n{question} [yN]> ").lower() == "y"
 
 
-FuncType = Callable[..., Any]
-F = TypeVar("F", bound=FuncType)
-
-
-def log_command(func: F) -> F:
-    def wrapper(self: "Model", *args: str) -> Any:
-        result = func(self, *args)
-        # On success
-        if self._logger:
-            self._logger.log(func.__name__, args)
-        return result
-
-    return cast(F, wrapper)
-
-
 class CommandLogger:
     def __init__(self, logfile: IO[str]):
         self._logfile = logfile
@@ -87,7 +60,7 @@ class CommandLogger:
         return filename
 
     @staticmethod
-    def parse_logfile(logfile: IO[str], model: "Model") -> None:
+    def parse_logfile(logfile: IO[str], model: business.Building) -> None:
         reader = csv.reader(logfile)
         next(reader)
         for row in reader:
@@ -110,82 +83,10 @@ class CommandLogger:
         self._logfile.flush()
 
 
-class Model:
-    """Abstraction layer above json file from the parser."""
-
-    def __init__(self, flats: List[utils.Flat]):
-        self._flats = collections.OrderedDict((flat.name, flat) for flat in flats)
-        self._present_persons: Dict[str, utils.Person] = {}
-        self._logger: Optional[CommandLogger] = None
-
-    def register_logger(self, logger: CommandLogger) -> None:
-        self._logger = logger
-
-    @property
-    def flats(self) -> List[utils.Flat]:
-        return list(self._flats.values())
-
-    def get_flat(self, shortname: str) -> utils.Flat:
-        return self._flats[shortname]
-
-    @property
-    def percent_represented(self) -> float:
-        return sum(flat.fraction for flat in self.flats if flat.represented) * 100
-
-    @log_command
-    def represent_flat(self, flat_name: str, person_name: str) -> None:
-        person = self._present_persons[person_name]
-        self._flats[flat_name].represented = person
-
-    def person_exists(self, name: str) -> bool:
-        return name in self._present_persons
-
-    @log_command
-    def add_person(self, name: str) -> None:
-        assert not self.person_exists(name)
-        self._present_persons[name] = utils.Person(name, datetime.now())
-
-    @log_command
-    def remove_flat_representative(self, flat_name: str) -> None:
-        flat = self._flats[flat_name]
-        person = flat.represented
-        if person:
-            self._remove_flat_representative(flat_name)
-
-    def _remove_flat_representative(self, flat_name: str) -> None:
-        self._flats[flat_name].represented = None
-
-    @log_command
-    def remove_person(self, name: str) -> List[str]:
-        person_flats = self.get_representative_flats(name)
-        for flat_name in person_flats:
-            self._remove_flat_representative(flat_name)
-        del self._present_persons[name]
-        return person_flats
-
-    def get_representative_flats(self, person_name: str) -> List[str]:
-        return [
-            flat.name
-            for flat in self.flats
-            if flat.represented and flat.represented.name == person_name
-        ]
-
-    def get_person_names(self, prefix: str) -> List[str]:
-        return [n for n in self._present_persons if n.startswith(prefix)]
-
-    def get_other_representatives(self, person_name: str) -> List[str]:
-        flats = []
-        for flat in self._flats.values():
-            if not flat.represented and person_name in flat.persons:
-                flats.append(flat.name)
-        flats.sort()
-        return flats
-
-
 class AppCmd(cmd.Cmd):
     def __init__(
         self,
-        model: Model,
+        model: business.Building,
         completekey: str = "tab",
         stdin: IO[str] = None,
         stdout: IO[str] = None,
@@ -220,7 +121,7 @@ class AppCmd(cmd.Cmd):
     def complete_flat(self, text: str, line: str, beginx: int, endx: int) -> List[str]:
         return [flat.name for flat in self.model.flats if flat.name.startswith(text)]
 
-    def _write_flat_owners(self, flat: utils.Flat) -> None:
+    def _write_flat_owners(self, flat: business.Flat) -> None:
         self.stdout.write(f"{flat.name} owners:\n")
         for i, owner in enumerate(flat.owners, start=1):
             self.stdout.write(f"{i:2d}. {owner.name}\n")
@@ -352,43 +253,7 @@ class AppCmd(cmd.Cmd):
 
     def do_presence(self, args: str) -> None:
         """Prints presence into file."""
-        filename = args or "presence.html"
-        rows = []
-        sum_share = 0.0
-        max_time = datetime.min
-        max_pm = 0
-        n_flats = 0
-        representatives = set()
-        for flat in self.model.flats:
-            if flat.represented:
-                repr_name = utils.convert_name(flat.represented.name)
-                time = flat.represented.created_at.strftime("%H:%M")
-                sum_share += float(flat.fraction)
-                max_time = max(max_time, flat.represented.created_at)
-                n_flats += 1
-                representatives.add(flat.represented.name)
-            else:
-                repr_name = ""
-                time = ""
-            for i, owner in enumerate(flat.owners, start=1):
-                share = float(flat.fraction * owner.fraction)
-                name = utils.convert_name(owner.name)
-                rows.append((name, flat.name, i, f"{share:.2%}", "", repr_name, time))
-        rows.sort(key=lambda x: locale.strxfrm(x[0]))
-        last_row = (
-            "Celkem",
-            n_flats,
-            "",
-            f"{sum_share:.2%}",
-            max_pm,
-            len(representatives),
-            max_time.strftime("%H:%M"),
-        )
-        with open(filename, "w") as fout:
-            fout.write(utils.CSS_STYLE)
-            utils.write_table(
-                fout, rows, "Presenční listina", PRESENCE_FIELDS, last_row=last_row
-            )
+        reports.write_presence(self.model, args or "presence.html")
 
     def do_quit(self, args: str) -> bool:
         """Quit the app."""
@@ -401,19 +266,8 @@ class AppCmd(cmd.Cmd):
     do_EOF = do_quit
 
 
-PRESENCE_FIELDS = [
-    utils.Field("Vlastník", "owner"),
-    utils.Field("Jednotka", "unit"),
-    utils.Field("Část", "sub"),
-    utils.Field("Podíl", "size"),
-    utils.Field("PM", "ref"),
-    utils.Field("Hlasuje", "owner"),
-    utils.Field("Čas registrace", "time"),
-]
-
-
 def open_or_create_logfile(
-    logfile: TextIO, model: Model, default_filename: str
+    logfile: TextIO, model: business.Building, default_filename: str
 ) -> TextIO:
     if not logfile:
         try:
@@ -446,7 +300,7 @@ def main() -> None:
     args = parser.parse_args()
     setup_readline_if_available()
     json_flats = json.load(args.flats)
-    model = Model(utils.from_json_to_flats(json_flats))
+    model = business.Building(utils.from_json_to_flats(json_flats))
     default_filename = CommandLogger.default_logname(args.flats.name)
     logfile = open_or_create_logfile(args.log, model, default_filename)
     model.register_logger(CommandLogger(logfile))
