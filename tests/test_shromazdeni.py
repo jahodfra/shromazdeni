@@ -17,10 +17,26 @@ def simple_building() -> business.Building:
     third = fractions.Fraction(1) / 3
     model = business.Building(
         [
-            business.Flat("1", third, [business.Owner("Petr Novák")], {"Petr Novák"}),
-            business.Flat("2", third, [business.Owner("Jana Nová")], {"Jana Nová"}),
             business.Flat(
-                "3", third, [business.Owner("Oldřich Starý")], {"Oldřich Starý"}
+                name="1",
+                original_name="1",
+                fraction=third,
+                owners=[business.Owner("Petr Novák")],
+                persons={"Petr Novák"},
+            ),
+            business.Flat(
+                name="2",
+                original_name="2",
+                fraction=third,
+                owners=[business.Owner("Jana Nová")],
+                persons={"Jana Nová"},
+            ),
+            business.Flat(
+                name="3",
+                original_name="3",
+                fraction=third,
+                owners=[business.Owner("Oldřich Starý")],
+                persons={"Oldřich Starý"},
             ),
         ]
     )
@@ -34,14 +50,33 @@ def building_with_one_owner() -> business.Building:
     share = fractions.Fraction(1) / 2
     return business.Building(
         [
-            business.Flat("1", share, [business.Owner("Petr Novák")], {"Petr Novák"}),
             business.Flat(
-                "2",
-                share,
-                [business.Owner("Petr Novák"), business.Owner("Jana Nová")],
-                {"Petr Novák", "Jana Nová"},
+                name="1",
+                original_name="1",
+                fraction=share,
+                owners=[business.Owner("Petr Novák")],
+                persons={"Petr Novák"},
+            ),
+            business.Flat(
+                name="2",
+                original_name="2",
+                fraction=share,
+                owners=[business.Owner("Petr Novák"), business.Owner("Jana Nová")],
+                persons={"Petr Novák", "Jana Nová"},
             ),
         ]
+    )
+
+
+def create_flat(name: str, represented: business.Person = None) -> business.Flat:
+    third = fractions.Fraction(1) / 3
+    return business.Flat(
+        name=name,
+        original_name=name,
+        fraction=third,
+        owners=[],
+        persons=set(),
+        represented=represented,
     )
 
 
@@ -84,13 +119,8 @@ def test_flat_without_params(simple_building: business.Building) -> None:
 
 
 def test_complete_flat() -> None:
-    third = fractions.Fraction(1) / 3
     model = business.Building(
-        [
-            business.Flat("777/1", third, [], set()),
-            business.Flat("777/2", third, [], set()),
-            business.Flat("778/3", third, [], set()),
-        ]
+        [create_flat("777/1"), create_flat("777/2"), create_flat("778/3")]
     )
     cmd = __main__.AppCmd(model)
 
@@ -226,15 +256,10 @@ def test_add_inform_about_extra_unit(
 
 
 def test_complete_remove() -> None:
-    third = fractions.Fraction(1) / 3
     model = business.Building(
         [
-            business.Flat(
-                "777/1",
-                third,
-                [],
-                set(),
-                represented=business.Person("Radoslava Květná", datetime.min),
+            create_flat(
+                "777/1", represented=business.Person("Radoslava Květná", datetime.min)
             )
         ]
     )

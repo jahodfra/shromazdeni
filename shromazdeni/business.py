@@ -4,6 +4,7 @@ Main business model for the application
 The module shouldn't depend on other parts of the package.
 """
 
+import re
 import collections
 import fractions
 from datetime import datetime
@@ -33,6 +34,7 @@ class Owner:
 @dataclass
 class Flat:
     name: str
+    original_name: str
     fraction: fractions.Fraction
     owners: List[Owner]  # Owner can be SJM
     persons: Set[str]
@@ -40,7 +42,7 @@ class Flat:
 
     @property
     def sort_key(self) -> Tuple[int, ...]:
-        return tuple(int(n) for n in self.name.split("/"))
+        return tuple(int(n) for n in re.split(r"/|-", self.name))
 
     @property
     def nice_name(self) -> str:

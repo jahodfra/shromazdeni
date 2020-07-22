@@ -29,8 +29,20 @@ def test_load_json() -> None:
 
     unit = fractions.Fraction(1)
     assert flats == [
-        business.Flat("1", unit / 3, [business.Owner("P1")], {"P1"}),
-        business.Flat("2", unit * 2 / 3, [business.Owner("P2")], {"P2"}),
+        business.Flat(
+            name="1",
+            original_name="1",
+            fraction=unit / 3,
+            owners=[business.Owner("P1")],
+            persons={"P1"},
+        ),
+        business.Flat(
+            name="2",
+            original_name="2",
+            fraction=unit * 2 / 3,
+            owners=[business.Owner("P2")],
+            persons={"P2"},
+        ),
     ]
 
 
@@ -44,8 +56,16 @@ def test_load_json_shorten_names() -> None:
 
     unit = fractions.Fraction(1)
     assert flats == [
-        business.Flat("1", unit / 3, [], set()),
-        business.Flat("2", unit * 2 / 3, [], set()),
+        business.Flat(
+            name="1", original_name="100/1", fraction=unit / 3, owners=[], persons=set()
+        ),
+        business.Flat(
+            name="2",
+            original_name="100/2",
+            fraction=unit * 2 / 3,
+            owners=[],
+            persons=set(),
+        ),
     ]
 
 

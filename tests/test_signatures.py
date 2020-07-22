@@ -1,9 +1,8 @@
 import pathlib
-import sys
 
 import pytest
 
-from shromazdeni import presence_list
+from shromazdeni.tools import signatures
 
 
 CONTENT = """
@@ -18,11 +17,10 @@ CONTENT = """
 """
 
 
-def test_presence_list(tmp_path: pathlib.Path) -> None:
+def test_signatures(tmp_path: pathlib.Path) -> None:
     fpath = tmp_path / "flats.json"
     fpath.write_text(CONTENT)
-    sys.argv = ["presence_list.py", fpath.as_posix(), "--separate", "1"]
-    presence_list.main()
+    signatures.main([fpath.as_posix()])
 
 
 if __name__ == "__main__":
