@@ -39,7 +39,7 @@ def parse_owners(response: http.TextResponse) -> List[Dict]:
 
 class KatastrSpider(scrapy.Spider):
     name: str = "katastr"  # type: ignore
-    start_urls = ["https://nahlizenidokn.cuzk.cz/VyberBudovu.aspx?typ=Stavba"]
+    start_urls = ["https://nahlizenidokn.cuzk.cz/VyberBudovu.aspx?typ=Jednotka"]
     download_delay = 1.0
     allowed_domains = ["nahlizenidokn.cuzk.cz"]
 
@@ -62,19 +62,20 @@ class KatastrSpider(scrapy.Spider):
         yield scrapy.FormRequest.from_response(
             response,
             formdata={
-                "ctl00$bodyPlaceHolder$txtUlice": self.street,
-                "ctl00$bodyPlaceHolder$txtCisloDomovni": self.home_number,
-                "ctl00$bodyPlaceHolder$btnVyhledat": "Vyhledat",
                 "ctl00$bodyPlaceHolder$listTypBudovy": "1",
                 "ctl00$bodyPlaceHolder$txtBudova": "",
+                "ctl00$bodyPlaceHolder$txtUlice": self.street,
+                "ctl00$bodyPlaceHolder$txtCisloDomovni": self.home_number,
                 "ctl00$bodyPlaceHolder$txtCisloOr": "",
-                "ctl00$bodyPlaceHolder$idAccordionIndex": "1",
+                "ctl00$bodyPlaceHolder$txtJednotka": "",
+                "ctl00$bodyPlaceHolder$btnVyhledat": "Vyhledat",
+                "ctl00$bodyPlaceHolder$tabPanelIndex": "1",
             },
             callback=self.parse_building,
         )
 
     def parse_building(self, response: http.TextResponse) -> http.FormRequest:
-        for link in response.xpath("//table[@summary='Vymezené jednotky']//a"):
+        for link in response.xpath("//table[@summary='Nalezené jednotky']//a"):
             yield scrapy.Request(
                 response.urljoin(link.attrib["href"]), callback=self.parse_flat
             )
@@ -96,10 +97,10 @@ def download_building(
     response = pool.request(
         "GET",
         "https://nahlizenidokn.cuzk.cz/AutoCompleteObecHandler.ashx?{}".format(
-            urllib.parse.urlencode({"term": region})
+            urllib.parse.urlencode({"query": region})
         ),
     )
-    regions = json.loads(response.data)
+    regions = json.loads(response.data)["suggestions"]
     if len(regions) != 1:
         raise ValueError("Different number of regions then 1: {}".format(regions))
     full_region = regions[0]
